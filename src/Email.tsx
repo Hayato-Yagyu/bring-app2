@@ -1,6 +1,6 @@
 import { FC } from 'react'
-//import { Button } from '@react-email/button'
-import { Button } from '@mui/material'
+import { Button } from '@react-email/button'
+
 
 type Props = {
   url: string

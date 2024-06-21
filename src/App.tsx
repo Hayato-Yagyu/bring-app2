@@ -1,9 +1,9 @@
 import React, {  useState } from "react";
 import {  Box, Button,   TextField, Typography } from '@mui/material';
 import { useNavigate } from "react-router-dom";
-
 import { auth } from "./firebase";
 import { signInWithEmailAndPassword} from "firebase/auth";
+import { useUser } from './components/UserContext';
 
 
 const App = () => {
@@ -18,13 +18,15 @@ const App = () => {
   }
   const [email, setEmail] = useState<string>("");
   const [password, setPassword] = useState<string>("");
+  const { setUser } = useUser();
+  
 
   const handleLogin = async () => {
 
     await signInWithEmailAndPassword(auth, email, password)
       .then((userCredential) => {
-        console.log(userCredential);
-        navigate('/BringList');
+        setUser(userCredential.user);
+        navigate('/NewPost');
       })
       .catch((error) => {
         alert(error.message);
