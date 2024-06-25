@@ -16,7 +16,6 @@ import Applicant from "./Applicant";
 
 
 
-
 const NewPost = () => {
     const [applicantdate, setApplicantdate] = useState("");
     const [applicant, setApplicant] = useState("");
@@ -56,10 +55,10 @@ const NewPost = () => {
             || !where.trim()
             || !materials.trim()
             || !media.trim()
-            //|| !permitdate.trim()
-            //|| !permitstamp.trim()
-            //|| !confirmationdate.trim()
-            //|| !confirmationstamp.trim()
+            || !permitdate.trim()
+            || !permitstamp.trim()
+            || !confirmationdate.trim()
+            || !confirmationstamp.trim()
          ) {
         setOpenDialog(true);
         return;
@@ -107,21 +106,14 @@ const NewPost = () => {
 
     const handleApproval = () => {
     // emailjsのUser_IDを使って初期化
-    //init("mmbrcdIStlsQnbKkE")
-    const emailjsUserID = process.env.REACT_APP_EMAILJS_USER_ID;
-    init(emailjsUserID);
-    
+    init("mmbrcdIStlsQnbKkE")
+    //init(process.env.GATSBY_USER_ID);
 
     // 環境変数からService_IDとTemplate_IDを取得する。
-    const emailjsServiceId = process.env.REACT_APP_EMAILJS_SERVICE_ID;
-    const emailjsTemplateId = process.env.REACT_APP_EMAILJS_TEMPLATE_ID;
-    //const emailjsServiceId = "service_0sslyge"
-    //const emailjsTemplateId = "template_81c28kt"
-
-    if (!emailjsUserID || !emailjsServiceId || !emailjsTemplateId) {
-      console.log('サービスID、テンプレートID、またはユーザーIDが指定されていません。');
-      return;
-    }
+    //const emailjsServiceId = process.env.GATSBY_EMAILJS_SERVICE_ID;
+    //const emailjsTemplateId = process.env.GATSBY_EMAILJS_TEMPLATE_ID;
+    const emailjsServiceId = "service_0sslyge"
+    const emailjsTemplateId = "template_81c28kt"
 
     const emailHtml = "http://localhost:3000/BringList"
 
@@ -131,22 +123,14 @@ const NewPost = () => {
         //from_name: emailName,
         from_name: "bring-app（媒体等持込持出記録アプリ）",
         //message: emailText
-        id:  docID  ,
-        applicantdate: applicantdate,
-        applicant: applicant,
-        classification: classification,
-        periodfrom: periodfrom,
-        periodto: periodto,
-        where: where,
-        materials: materials,
-        media: media,
+        message:  docID  ,
         link: emailHtml
 
     };
 
     // ServiceId,Template_ID,テンプレートに渡すパラメータを引数にemailjsを呼び出し
-    emailjs.send(emailjsServiceId, emailjsTemplateId, templateParams).
-    //emailjs.send("service_0sslyge","template_81c28kt", templateParams).
+    //emailjs.send(emailjsServiceId,emailjsTemplateId, templateParams).
+    emailjs.send("service_0sslyge","template_81c28kt", templateParams).
     then(()=>{
       // do something
     });
@@ -204,8 +188,6 @@ const NewPost = () => {
             
             <form onSubmit={handleSubmit} >
                 <br />
-                <br />
-                <br />
                 <TextField id="filled-basic" label="申請日"  InputLabelProps={{shrink: true}} type="date" sx={{ width: "400px"}} value={applicantdate} onChange={(e) => {setApplicantdate(e.target.value)}}/>
                 <br />
                 <br />
@@ -251,12 +233,23 @@ const NewPost = () => {
                   />
                 )}
                 <br />
+                <br />
                 <TextField id="filled-basic" label="データまたは資料名" InputLabelProps={{shrink: true}}  sx={{ width: "400px" }} value={materials} onChange={(e) => {setMaterials(e.target.value) }}/>
                 <br />
                 <br />
                 <TextField id="filled-basic" label="媒体・ＰＣ 設備番号"  InputLabelProps={{shrink: true}} sx={{ width: "400px" }} value={media} onChange={(e) => {setMedia(e.target.value) }}/>
                 <br />
                 <br />
+                <TextField id="filled-basic" label="許可日" InputLabelProps={{shrink: true}}  sx={{ width: "400px" }} value={permitdate} onChange={(e) => {setPermitdate(e.target.value)}}/>
+                <br />
+                <br />
+                <TextField id="filled-basic" label="許可者印" InputLabelProps={{shrink: true}}  sx={{ width: "400px" }} value={permitstamp} onChange={(e) => {setPermitstamp(e.target.value)}}/>
+                <br />
+                <br />
+                <TextField id="filled-basic" label="持出返却確認日" InputLabelProps={{shrink: true}}  sx={{ width: "400px" }} value={confirmationdate} onChange={(e) => {setConfirmationdate(e.target.value)}}/>
+                <br />
+                <br />
+                <TextField id="filled-basic" label="確認者印" InputLabelProps={{shrink: true}}  sx={{ width: "400px" }} value={confirmationstamp} onChange={(e) => {setConfirmationstamp(e.target.value)}}/>
                 <br />
                 <br />
                 <br /> 
