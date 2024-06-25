@@ -1,13 +1,13 @@
 {
   "files": {
     "main.css": "/Hayato-Yagyu/bring-app2.git/static/css/main.dc4d6ff2.css",
-    "main.js": "/Hayato-Yagyu/bring-app2.git/static/js/main.e776776c.js",
+    "main.js": "/Hayato-Yagyu/bring-app2.git/static/js/main.591e28cf.js",
     "index.html": "/Hayato-Yagyu/bring-app2.git/index.html",
     "main.dc4d6ff2.css.map": "/Hayato-Yagyu/bring-app2.git/static/css/main.dc4d6ff2.css.map",
-    "main.e776776c.js.map": "/Hayato-Yagyu/bring-app2.git/static/js/main.e776776c.js.map"
+    "main.591e28cf.js.map": "/Hayato-Yagyu/bring-app2.git/static/js/main.591e28cf.js.map"
   },
   "entrypoints": [
     "static/css/main.dc4d6ff2.css",
-    "static/js/main.e776776c.js"
+    "static/js/main.591e28cf.js"
   ]
 }
