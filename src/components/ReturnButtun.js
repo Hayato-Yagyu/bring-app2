@@ -46,7 +46,7 @@ const ReturnButton = ({rowId, rowData,sharedState, setSharedState}) => {
       console.log('サービスID、テンプレートID、またはユーザーIDが指定されていません。');
       return;
     }
-    const emailHtml = "http://localhost:3000/BringList"
+    const emailHtml = "https://bring-app2.vercel.app/"
 
     // emailjsのテンプレートに渡すパラメータを宣言
     const templateParams = {

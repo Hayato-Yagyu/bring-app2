@@ -55,10 +55,10 @@ const NewPost = () => {
             || !where.trim()
             || !materials.trim()
             || !media.trim()
-            || !permitdate.trim()
-            || !permitstamp.trim()
-            || !confirmationdate.trim()
-            || !confirmationstamp.trim()
+         //  || !permitdate.trim()
+         //  || !permitstamp.trim()
+         //  || !confirmationdate.trim()
+         //  || !confirmationstamp.trim()
          ) {
         setOpenDialog(true);
         return;
@@ -115,7 +115,7 @@ const NewPost = () => {
     const emailjsServiceId = "service_0sslyge"
     const emailjsTemplateId = "template_81c28kt"
 
-    const emailHtml = "http://localhost:3000/BringList"
+    const emailHtml = "https://bring-app2.vercel.app/"
 
     // emailjsのテンプレートに渡すパラメータを宣言
     const templateParams = {
@@ -123,7 +123,15 @@ const NewPost = () => {
         //from_name: emailName,
         from_name: "bring-app（媒体等持込持出記録アプリ）",
         //message: emailText
-        message:  docID  ,
+        id:  docID  ,
+        applicantdate: applicantdate,
+        applicant: applicant,
+        classification: classification,
+        periodfrom: periodfrom,
+        periodto: periodto,
+        where: where,
+        materials: materials,
+        media: media,
         link: emailHtml
 
     };
@@ -232,7 +240,7 @@ const NewPost = () => {
                   sx={{ width: 400 }}
                   />
                 )}
-                <br />
+
                 <br />
                 <TextField id="filled-basic" label="データまたは資料名" InputLabelProps={{shrink: true}}  sx={{ width: "400px" }} value={materials} onChange={(e) => {setMaterials(e.target.value) }}/>
                 <br />
@@ -240,19 +248,7 @@ const NewPost = () => {
                 <TextField id="filled-basic" label="媒体・ＰＣ 設備番号"  InputLabelProps={{shrink: true}} sx={{ width: "400px" }} value={media} onChange={(e) => {setMedia(e.target.value) }}/>
                 <br />
                 <br />
-                <TextField id="filled-basic" label="許可日" InputLabelProps={{shrink: true}}  sx={{ width: "400px" }} value={permitdate} onChange={(e) => {setPermitdate(e.target.value)}}/>
-                <br />
-                <br />
-                <TextField id="filled-basic" label="許可者印" InputLabelProps={{shrink: true}}  sx={{ width: "400px" }} value={permitstamp} onChange={(e) => {setPermitstamp(e.target.value)}}/>
-                <br />
-                <br />
-                <TextField id="filled-basic" label="持出返却確認日" InputLabelProps={{shrink: true}}  sx={{ width: "400px" }} value={confirmationdate} onChange={(e) => {setConfirmationdate(e.target.value)}}/>
-                <br />
-                <br />
-                <TextField id="filled-basic" label="確認者印" InputLabelProps={{shrink: true}}  sx={{ width: "400px" }} value={confirmationstamp} onChange={(e) => {setConfirmationstamp(e.target.value)}}/>
-                <br />
-                <br />
-                <br /> 
+
                 <Button onClick={handleReset} variant="outlined"  sx={{ width: 150 }}>キャンセル</Button>
                 <Button variant="contained" type='submit' sx={{ width: 150 }}>承認依頼</Button>
             </form>
