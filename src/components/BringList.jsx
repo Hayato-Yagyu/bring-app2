@@ -10,7 +10,9 @@ import { Typography } from '@mui/material';
 import DeleteButton from './DeleteButton';
 import EditButton from './EditButton';
 import ReturnButton from './ReturnButtun';
+import CsvButton from './CsvButton';
 import { useUser } from './UserContext';
+import { CSVLink } from 'react-csv';
 
 
 
@@ -149,12 +151,29 @@ export const BringList = () => {
       },
     ];
 
+    const csvData = posts.map(row => ({
+      ID: row.id,
+      '申請日': row.applicantdate,
+      '申請者': row.applicant,
+      '持込・持出区分': row.classification,
+      '持込・持出日 から': row.periodfrom,
+      '持込・持出日 まで': row.periodto,
+      '持込・持出先': row.where,
+      'データまたは資料名': row.materials,
+      '媒体・ＰＣ 設備番号': row.media,
+      '許可日': row.permitdate,
+      '許可者': row.permitstamp,
+      '持出返却 確認日': row.confirmationdate,
+      '確認者': row.confirmationstamp,
+    }));
+
   return (
     <>
     <Menu />
     <Box sx={{ height: '100%', width: 'auto'}}>
       <Typography variant='h4' align='center' borderBottom={'2px solid gray'}>媒体等持込持出一覧</Typography>
       <br />
+      
       <DataGrid
         rows={posts}
         columns={columns}
@@ -169,8 +188,10 @@ export const BringList = () => {
         checkboxSelection={false}
         disableRowSelectionOnClick={true}
         sortModel={defaultSortModel}
-       
       />
+      <CSVLink data={csvData} filename={"BringList.csv"} className="btn btn-primary" target="_blank">
+        CSV出力
+      </CSVLink>
     </Box>
     </>
   )
