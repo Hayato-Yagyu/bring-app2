@@ -1,5 +1,5 @@
 import React, {  useState } from "react";
-import {  Box, Button,   TextField, Typography } from '@mui/material';
+import {  Box, Button,   TextField, Typography, useMediaQuery, useTheme } from '@mui/material';
 import { useNavigate } from "react-router-dom";
 import { auth } from "./firebase";
 import { signInWithEmailAndPassword} from "firebase/auth";
@@ -41,10 +41,22 @@ const App = () => {
     setPassword(event.currentTarget.value);
   };
 
+  const theme = useTheme();
+  const isSmallScreen = useMediaQuery(theme.breakpoints.down('sm'));
+
   return (
     <>
       
-         <Box sx={{ display: 'flex', justifyContent: 'center', width: 'auto', flexDirection: 'column', alignItems:'center', margin:'100px',border: '2px solid gray', padding:'100px', gap: '40px' }}>
+         <Box sx={{ display: 'flex',
+            justifyContent: 'center',
+            width: 'auto',
+            flexDirection: 'column',
+            alignItems: 'center',
+            margin: isSmallScreen ? '20px' : '100px',
+            border: '2px solid gray',
+            padding: isSmallScreen ? '20px' : '100px',
+            gap: isSmallScreen ? '20px' : '40px' }}>
+
             <Typography variant={'h5'}>媒体等持込持出記録</Typography>
             <TextField label="メールアドレス" name="email" variant="standard" value={email} onChange={(event: React.ChangeEvent<HTMLInputElement>) => {handleChangeEmail(event) }} sx={{ width: '100%'}} />
             <TextField label="パスワード" name="password" variant="standard" type="password" value={password} onChange={(event: React.ChangeEvent<HTMLInputElement>) => {handleChangePassword(event)}} sx={{ width: '100%'}} />
