@@ -1,16 +1,14 @@
 import * as React from "react";
 import Box from "@mui/material/Box";
 import { DataGrid } from "@mui/x-data-grid";
-import { collection, deleteDoc, doc, getDocs } from "firebase/firestore";
+import { collection, getDocs } from "firebase/firestore";
 import { useEffect, useState } from "react";
 import { db } from "../firebase";
-import Button from "@mui/material/Button";
 import { Menu } from "./Menu";
 import { Typography } from "@mui/material";
 import DeleteButton from "./DeleteButton";
 import EditButton from "./EditButton";
 import ReturnButton from "./ReturnButtun";
-import CsvButton from "./CsvButton";
 import { useUser } from "./UserContext";
 import { CSVLink } from "react-csv";
 
@@ -146,21 +144,23 @@ export const BringList = () => {
     },
   ];
 
-  const csvData = posts.map((row) => ({
-    ID: row.id,
-    申請日: row.applicantdate,
-    申請者: row.applicant,
-    "持込・持出区分": row.classification,
-    "持込・持出日 から": row.periodfrom,
-    "持込・持出日 まで": row.periodto,
-    "持込・持出先": row.where,
-    データまたは資料名: row.materials,
-    "媒体・ＰＣ 設備番号": row.media,
-    許可日: row.permitdate,
-    許可者: row.permitstamp,
-    返却確認日: row.confirmationdate,
-    確認者: row.confirmationstamp,
-  }));
+  const csvData = [...posts]
+    .sort((a, b) => new Date(b.applicantdate) - new Date(a.applicantdate)) // 申請日で降順にソート
+    .map((row) => ({
+      ID: row.id,
+      申請日: row.applicantdate,
+      申請者: row.applicant,
+      "持込・持出区分": row.classification,
+      "持込・持出日 から": row.periodfrom,
+      "持込・持出日 まで": row.periodto,
+      "持込・持出先": row.where,
+      データまたは資料名: row.materials,
+      "媒体・ＰＣ 設備番号": row.media,
+      許可日: row.permitdate,
+      許可者: row.permitstamp,
+      返却確認日: row.confirmationdate,
+      確認者: row.confirmationstamp,
+    }));
 
   return (
     <>
