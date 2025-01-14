@@ -25,6 +25,7 @@ const Applicant: string[] = [
   "裾分 充",
   "桂田 宏美",
   "塩尻 風雅",
+  "池田 圭吾",
 ];
 
 export default Applicant;
