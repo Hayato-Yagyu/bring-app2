@@ -165,14 +165,22 @@ export const EditButton = ({rowData, setSharedState, disabled}) => {
             fullWidth
             margin="dense"
           />
-          <TextField
-            name="media"
-            label="媒体・ＰＣ 設備番号"
-            value={formData.media}
-            onChange={handleInputChange}
-            fullWidth
-            margin="dense"
-          />
+          <FormControl fullWidth margin="dense">
+            <InputLabel id="media-label">媒体・ＰＣ 設備番号</InputLabel>
+            <Select
+              labelId="media-label"
+              name="media"
+              value={formData.media}
+              onChange={handleInputChange}
+              label="媒体・ＰＣ 設備番号"
+            >
+              <MenuItem value="PC">PC</MenuItem>
+              <MenuItem value="スマートフォン">スマートフォン</MenuItem>
+              <MenuItem value="USBメモリ">USBメモリ</MenuItem>
+              <MenuItem value="外付けHDD">外付けHDD</MenuItem>
+              <MenuItem value="その他">その他</MenuItem>
+            </Select>
+          </FormControl>
           <TextField
             name="permitdate"
             label="許可日"
