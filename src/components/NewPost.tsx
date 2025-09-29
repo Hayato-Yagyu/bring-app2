@@ -245,7 +245,14 @@ const NewPost = () => {
                 <TextField id="filled-basic" label="データまたは資料名" InputLabelProps={{shrink: true}}  sx={{ width: "400px" }} value={materials} onChange={(e) => {setMaterials(e.target.value) }}/>
                 <br />
                 <br />
-                <TextField id="filled-basic" label="媒体・ＰＣ 設備番号"  InputLabelProps={{shrink: true}} sx={{ width: "400px" }} value={media} onChange={(e) => {setMedia(e.target.value) }}/>
+                <TextField id="filled-basic" label="媒体・ＰＣ 設備番号" select sx={{ width: "400px" }} value={media} onChange={(e) => {setMedia(e.target.value) }}
+                    InputLabelProps={{shrink: true,}} InputProps={{style: {textAlign: 'left',},}}>
+                      <MenuItem value="PC">PC</MenuItem>
+                      <MenuItem value="スマートフォン">スマートフォン</MenuItem>
+                      <MenuItem value="USBメモリ">USBメモリ</MenuItem>
+                      <MenuItem value="外付けHDD">外付けHDD</MenuItem>
+                      <MenuItem value="その他">その他</MenuItem>
+                </TextField>
                 <br />
                 <br />
 
