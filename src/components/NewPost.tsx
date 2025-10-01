@@ -6,7 +6,7 @@ import "../App.css";
 import { Menu } from "../components/Menu";
 import { Typography, TextField, Box } from "@mui/material";
 import styled from "@emotion/styled";
-import { Email } from "../Email";
+//import { Email } from "../Email";
 import { init } from "emailjs-com";
 import emailjs from "emailjs-com";
 import ComfirmDialog from "./ComfirmDialog";
@@ -30,9 +30,9 @@ const NewPost = () => {
   const [openDialog, setOpenDialog] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
 
-  const handleOpenDialog = () => {
-    setOpenDialog(true);
-  };
+  // const handleOpenDialog = () => {
+  //   setOpenDialog(true);
+  // };
 
   const handleCloseDialog = () => {
     setOpenDialog(false);
@@ -106,8 +106,8 @@ const NewPost = () => {
     // 環境変数からService_IDとTemplate_IDを取得する。
     //const emailjsServiceId = process.env.GATSBY_EMAILJS_SERVICE_ID;
     //const emailjsTemplateId = process.env.GATSBY_EMAILJS_TEMPLATE_ID;
-    const emailjsServiceId = "service_0sslyge";
-    const emailjsTemplateId = "template_81c28kt";
+    // const emailjsServiceId = "service_0sslyge";
+    // const emailjsTemplateId = "template_81c28kt";
 
     const emailHtml = "https://bring-app2.vercel.app/";
 
@@ -268,7 +268,16 @@ const NewPost = () => {
               />
               <br />
               <br />
-              <TextField id="filled-basic" label="持込・持出先" select sx={{ width: "400px" }} value={selectedOption} onChange={handleOptionChange} InputLabelProps={{ shrink: true }} InputProps={{ style: { textAlign: "left" } }}>
+              <TextField
+                id="filled-basic"
+                label="持込・持出先"
+                select
+                sx={{ width: "400px" }}
+                value={selectedOption}
+                onChange={handleOptionChange}
+                InputLabelProps={{ shrink: true }}
+                InputProps={{ style: { textAlign: "left" } }}
+              >
                 {Where.map((item: string, index: any) => (
                   <MenuItem key={index} value={item}>
                     {item}

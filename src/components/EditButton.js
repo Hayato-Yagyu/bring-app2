@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Button, Modal, TextField, Box, MenuItem, InputLabel, FormControl, Select } from "@mui/material";
 import { db } from "../firebase";
-import { collection, doc, getDocs, updateDoc, where } from "firebase/firestore";
+import { collection, doc, getDocs, updateDoc } from "firebase/firestore";
 import Applicant from "./Applicant";
 import Where from "./Where";
 
@@ -9,7 +9,6 @@ export const EditButton = ({ rowData, setSharedState, disabled }) => {
   const [open, setOpen] = useState(false);
   const [formData, setFormData] = useState({});
   const [otherInput, setOtherInput] = useState("");
-  const [selectedOption, setSelectedOption] = useState("");
 
   const handleOpen = () => {
     setFormData(rowData); // 編集開始時に選択された行のデータをセット
@@ -26,16 +25,16 @@ export const EditButton = ({ rowData, setSharedState, disabled }) => {
     setFormData({ ...formData, [name]: value });
   };
 
-  const handleOptionChange = (e) => {
-    const { name, value } = e.target.value;
-    setSelectedOption(value);
-    setFormData({ ...formData, [name]: value });
+  // const handleOptionChange = (e) => {
+  //   const { name, value } = e.target.value;
+  //   setSelectedOption(value);
+  //   setFormData({ ...formData, [name]: value });
 
-    // If "その他" is selected, clear otherInput
-    if (value === "その他") {
-      setOtherInput("");
-    }
-  };
+  //   // If "その他" is selected, clear otherInput
+  //   if (value === "その他") {
+  //     setOtherInput("");
+  //   }
+  // };
 
   const handleOtherInputChange = (e) => {
     const { name, other } = e.target.value;
