@@ -31,9 +31,8 @@ export const Menu = () => {
             <Button className="text" onClick={handleBringList}>
               既存編集
             </Button>
-            {/* 戻るボタンをアイコンのみに変更 */}
-            <IconButton color="inherit" onClick={handleLogin}>
-              <LogoutIcon />
+            <IconButton onClick={handleLogin}>
+              <LogoutIcon sx={{ color: "white" }} />
             </IconButton>
           </ButtonGroup>
         </Box>
