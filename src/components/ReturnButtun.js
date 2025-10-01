@@ -1,7 +1,5 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { Button, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle } from "@mui/material";
-import { db } from "../firebase";
-import { collection, deleteDoc, doc, getDocs } from "firebase/firestore";
 import { init } from "emailjs-com";
 import emailjs from "emailjs-com";
 
@@ -21,12 +19,12 @@ const ReturnButton = ({ rowId, rowData, sharedState, setSharedState }) => {
     setCompletionOpen(false);
   };
 
-  const deleteRow = (rowId, e) => {
-    // (ここで削除処理)
-    deleteDoc(doc(db, "posts", rowId));
-    setOpen(false);
-    setSharedState((prevRows) => prevRows.filter((sharedState) => sharedState.id !== rowId));
-  };
+  // const deleteRow = (rowId, e) => {
+  //   // (ここで削除処理)
+  //   deleteDoc(doc(db, "posts", rowId));
+  //   setOpen(false);
+  //   setSharedState((prevRows) => prevRows.filter((sharedState) => sharedState.id !== rowId));
+  // };
 
   const handleApproval = (rowId, e) => {
     // emailjsのUser_IDを使って初期化
