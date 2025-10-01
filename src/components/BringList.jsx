@@ -9,7 +9,7 @@ import { Menu } from "./Menu";
 import { Typography } from "@mui/material";
 import DeleteButton from "./DeleteButton";
 import EditButton from "./EditButton";
-import ReturnButton from "./ReturnButtun";
+import ReturnButton from "./ReturnButtun"; // ← ファイル名がこの綴りならそのまま
 import { useUser } from "./UserContext";
 
 export const BringList = () => {
@@ -34,7 +34,6 @@ export const BringList = () => {
 
   const defaultSortModel = [{ field: "applicantdate", sort: "desc" }];
 
-  // ★ 固定幅はボタン列とIDだけ。その他は flex で可視幅にフィット
   const columns = [
     {
       field: "deleteBtn",
@@ -58,11 +57,11 @@ export const BringList = () => {
       sortable: false,
       width: 76,
       disableClickEventBubbling: true,
-      renderCell: (params) => <ReturnButton rowId={params.id} rowData={params.row} sharedState={posts} setSharedState={setPosts} />,
+      // ★ selectedApprover を使わない
+      renderCell: (params) => <ReturnButton rowId={params.id} rowData={params.row} />,
     },
-    { field: "id", headerName: "ID", width: 96 }, // ← 固定幅はここまで
+    { field: "id", headerName: "ID", width: 96 },
 
-    // ここから可変幅（flex）。minWidth は控えめに
     { field: "applicantdate", headerName: "申請日", flex: 1, minWidth: 100 },
     { field: "applicant", headerName: "申請者", flex: 1, minWidth: 110 },
     { field: "classification", headerName: "持込・持出区分", flex: 1, minWidth: 130 },
@@ -96,17 +95,14 @@ export const BringList = () => {
     }));
 
   return (
-    // ★ ページ全体で 100vh。外側スクロールは殺す
     <Box sx={{ height: "100vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
       <Menu csvData={csvData} />
 
-      {/* ★ コンテンツ領域（タイトル＋グリッド） */}
       <Box sx={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
         <Typography variant="h4" align="center" borderBottom={"2px solid gray"}>
           媒体等持込持出一覧
         </Typography>
 
-        {/* ★ DataGrid の枠。ここは高さだけを与え、横/外側スクロールは持たせない */}
         <Box sx={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
           <DataGrid
             rows={posts}
@@ -118,11 +114,9 @@ export const BringList = () => {
             sortModel={defaultSortModel}
             rowHeight={40}
             sx={{
-              // 横スクロール抑止（v7 の内部要素をまとめて clip）
               "&.MuiDataGrid-root, & .MuiDataGrid-main, & .MuiDataGrid-virtualScroller, & .MuiDataGrid-columnHeaders": {
                 overflowX: "clip",
               },
-              // 折り返し設定（既存）
               "& .MuiDataGrid-columnHeader": {
                 whiteSpace: "normal",
                 overflow: "visible",

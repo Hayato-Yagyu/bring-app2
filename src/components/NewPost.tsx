@@ -42,6 +42,7 @@ const NewPost = () => {
   const [toEmail, setToEmail] = useState<string>("");
 
   const [isSending, setIsSending] = useState(false);
+  const [toName, setToName] = useState("");
 
   const { user } = useUser();
   const navigate = useNavigate();
@@ -53,6 +54,12 @@ const NewPost = () => {
     const name = (user as any)?.displayName?.trim?.() || (user as any)?.email || "";
     setApplicant(name);
   }, [user]);
+
+  // 承認先選択時に氏名も同期
+  useEffect(() => {
+    const a = approvers.find((x) => x.email === toEmail);
+    setToName(a?.name ?? "");
+  }, [toEmail, approvers]);
 
   const validateDateRange = (from: string, to: string) => {
     if (!from || !to) {
@@ -130,11 +137,11 @@ const NewPost = () => {
         requestedAt: new Date().toISOString(),
       });
 
-      const emailHtml = "https://bring-app2.vercel.app/";
+      const emailHtml = "https://kdsbring.netlify.app/";
       const templateParams = {
-        to_name: "承認者各位",
+        to_name: toName,
         to_email: toEmail,
-        from_name: "bring-app（媒体等持込持出記録アプリ）",
+        from_email: user?.email ?? "",
         reply_to: user?.email ?? "",
         id: docRef.id,
         applicantdate,
