@@ -22,7 +22,7 @@ const App = () => {
     await signInWithEmailAndPassword(auth, email, password)
       .then((userCredential) => {
         setUser(userCredential.user);
-        navigate("/NewPost");
+        navigate("/BringList");
       })
       .catch((error) => {
         alert(error.message);

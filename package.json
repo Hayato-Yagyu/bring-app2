@@ -4,6 +4,7 @@
   "private": true,
   "homepage": ".",
   "dependencies": {
+    "@emailjs/browser": "^4.4.1",
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
     "@mui/icons-material": "^5.15.15",
@@ -20,7 +21,6 @@
     "@types/react": "^18.3.1",
     "@types/react-dom": "^18.3.0",
     "dotenv": "^16.4.5",
-    "emailjs-com": "^3.2.0",
     "firebase": "^10.11.1",
     "path-browserify": "^1.0.1",
     "react": "^18.3.1",
@@ -56,6 +56,7 @@
     ]
   },
   "devDependencies": {
+    "@types/react-csv": "^1.1.10",
     "customize-cra": "^1.0.0",
     "react-app-rewired": "^2.2.1"
   }

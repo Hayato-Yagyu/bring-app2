@@ -1,13 +1,37 @@
-body {
+/* 1) 外側スクロールを禁止 & 高さを伝播 */
+html,
+body,
+#root {
+  height: 100%;
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
+  padding: 0;
+  overflow: hidden; /* ← ウィンドウ側の縦スクロールを殺す */
+}
+
+/* 2) レイアウト安定化（推奨） */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+/* 3) 既存のフォント設定を維持 */
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen", "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* 4) メディアがはみ出さない（任意だが便利） */
+img,
+svg,
+video,
+canvas {
+  display: block;
+  max-width: 100%;
+}
+
+/* 5) 既存の code 用フォント設定を維持 */
 code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
-    monospace;
+  font-family: source-code-pro, Menlo, Monaco, Consolas, "Courier New", monospace;
 }
