@@ -8,12 +8,6 @@ import { useUser } from "./components/UserContext";
 const App = () => {
   const navigate = useNavigate();
 
-  // const handleBringList = () => {
-  //     navigate('/BringList')
-  // }
-  const handleAuth = () => {
-    navigate("/Auth");
-  };
   const [email, setEmail] = useState<string>("");
   const [password, setPassword] = useState<string>("");
   const { setUser } = useUser();
@@ -79,9 +73,6 @@ const App = () => {
         />
         <Button variant="contained" sx={{ width: "100%" }} onClick={handleLogin}>
           ログイン
-        </Button>
-        <Button variant="contained" sx={{ width: "100%" }} onClick={handleAuth} color="success">
-          新規ユーザー登録はこちら
         </Button>
       </Box>
     </>

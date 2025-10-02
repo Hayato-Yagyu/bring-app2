@@ -2,18 +2,20 @@
 import { Routes, Route, Navigate } from "react-router-dom";
 import React, { ReactNode } from "react";
 import App from "./App";
-import Auth from "./Auth";
 import NewPost from "./components/NewPost";
 import BringList from "./components/BringList";
 import { UserProvider, useUser } from "./components/UserContext";
+import AuthRoute from "./routes/AuthRoute";
+import UsersManagement from "./components/UsersManagement";
 
 export const AppRoutes = () => {
   return (
     <UserProvider>
       <Routes>
         <Route path="/" element={<App />} />
-        <Route path="/Auth" element={<Auth />} />
+        <Route path="/Auth" element={<AuthRoute />} />
         <Route path="/NewPost" element={<NewPost />} />
+        <Route path="/users" element={<UsersManagement />} />
         <Route
           path="/BringList"
           element={

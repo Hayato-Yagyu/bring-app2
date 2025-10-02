@@ -3,34 +3,40 @@ import * as React from "react";
 import Box from "@mui/material/Box";
 import { DataGrid } from "@mui/x-data-grid";
 import { collection, getDocs } from "firebase/firestore";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { db } from "../firebase";
 import { Menu } from "./Menu";
-import { Typography } from "@mui/material";
+import { Typography, Stack, Tooltip, IconButton } from "@mui/material";
+import NoteAddIcon from "@mui/icons-material/NoteAdd";
+import DownloadIcon from "@mui/icons-material/Download";
 import DeleteButton from "./DeleteButton";
 import EditButton from "./EditButton";
 import ReturnButton from "./ReturnButtun"; // ← ファイル名がこの綴りならそのまま
 import { useUser } from "./UserContext";
+import NewPostDialog from "../components/NewPostDialog"; // ダイアログで新規登録
 
 export const BringList = () => {
   const { user } = useUser();
   const isAuthorized = user && user.email === "hayato.yagyu@digitalsoft.co.jp";
 
   const [posts, setPosts] = useState([]);
+  const [openNew, setOpenNew] = useState(false); // 新規登録ダイアログ
+
+  // 一覧取得（新規登録完了後にも再利用）
+  const fetchPosts = useCallback(async () => {
+    try {
+      const postsRef = collection(db, "posts");
+      const querySnapshot = await getDocs(postsRef);
+      const postData = querySnapshot.docs.map((doc) => ({ ...doc.data(), id: doc.id }));
+      setPosts(postData);
+    } catch (error) {
+      console.error("Error fetching posts:", error);
+    }
+  }, []);
 
   useEffect(() => {
-    const fetchPosts = async () => {
-      try {
-        const usersCollectionRef = collection(db, "posts");
-        const querySnapshot = await getDocs(usersCollectionRef);
-        const postData = querySnapshot.docs.map((doc) => ({ ...doc.data(), id: doc.id }));
-        setPosts(postData);
-      } catch (error) {
-        console.error("Error fetching posts:", error);
-      }
-    };
     fetchPosts();
-  }, []);
+  }, [fetchPosts]);
 
   const defaultSortModel = [{ field: "applicantdate", sort: "desc" }];
 
@@ -57,7 +63,6 @@ export const BringList = () => {
       sortable: false,
       width: 76,
       disableClickEventBubbling: true,
-      // ★ selectedApprover を使わない
       renderCell: (params) => <ReturnButton rowId={params.id} rowData={params.row} />,
     },
     { field: "id", headerName: "ID", width: 96 },
@@ -94,15 +99,77 @@ export const BringList = () => {
       確認者: row.confirmationstamp || "",
     }));
 
+  const handleExportCsv = () => {
+    if (!csvData.length) return;
+
+    const headers = Object.keys(csvData[0] ?? {});
+    const esc = (v) => {
+      const s = v == null ? "" : String(v);
+      const needsQuote = /[",\r\n]/.test(s);
+      const body = s.replace(/"/g, '""');
+      return needsQuote ? `"${body}"` : body;
+    };
+
+    const rows = [headers.map(esc).join(","), ...csvData.map((r) => headers.map((h) => esc(r[h])).join(","))].join("\r\n");
+
+    const bom = new Uint8Array([0xef, 0xbb, 0xbf]); // Excel対策BOM
+    const blob = new Blob([bom, rows], { type: "text/csv;charset=utf-8;" });
+
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "BringList.csv";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <Box sx={{ height: "100vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
-      <Menu csvData={csvData} />
+      {/* Menu（CSV出力はここから削除済み） */}
+      <Menu />
 
       <Box sx={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        {/* タイトル（センター） */}
         <Typography variant="h4" align="center" borderBottom={"2px solid gray"}>
           媒体等持込持出一覧
         </Typography>
 
+        {/* タイトルの下に、左端に「新規登録」「CSV出力」を並べる（タイトルのボーダーとボタンを離すため mt:2） */}
+        {/* タイトル下のボタン行（アイコンのみ + ツールチップ + 緑色） */}
+        <Box>
+          <Stack direction="row">
+            <Tooltip title="新規登録" arrow>
+              <span>
+                <IconButton
+                  onClick={() => setOpenNew(true)}
+                  size="large"
+                  sx={{ color: "success.main" }} // 緑
+                  aria-label="新規登録"
+                >
+                  <NoteAddIcon />
+                </IconButton>
+              </span>
+            </Tooltip>
+
+            <Tooltip title="CSV出力" arrow>
+              <span>
+                <IconButton
+                  onClick={handleExportCsv}
+                  size="large"
+                  sx={{ color: "success.main" }} // 緑
+                  aria-label="CSV出力"
+                  disabled={!csvData.length}
+                >
+                  <DownloadIcon />
+                </IconButton>
+              </span>
+            </Tooltip>
+          </Stack>
+        </Box>
+
+        {/* グリッド本体 */}
         <Box sx={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
           <DataGrid
             rows={posts}
@@ -132,6 +199,15 @@ export const BringList = () => {
           />
         </Box>
       </Box>
+
+      {/* 新規登録ダイアログ（保存成功時に一覧を再取得） */}
+      <NewPostDialog
+        open={openNew}
+        onClose={() => setOpenNew(false)}
+        onSaved={() => {
+          fetchPosts();
+        }}
+      />
     </Box>
   );
 };
