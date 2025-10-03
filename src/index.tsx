@@ -4,6 +4,8 @@ import ReactDOM from "react-dom/client";
 import "./index.css";
 import { AppRoutes } from "./Routes";
 import { BrowserRouter } from "react-router-dom";
+import { ThemeProvider, CssBaseline } from "@mui/material";
+import theme from "./theme";
 
 import emailjs from "@emailjs/browser";
 
@@ -19,8 +21,11 @@ if (EMAILJS_PUBLIC_KEY) {
 const root = ReactDOM.createRoot(document.getElementById("root") as HTMLElement);
 root.render(
   <React.StrictMode>
-    <BrowserRouter>
-      <AppRoutes />
-    </BrowserRouter>
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      <BrowserRouter>
+        <AppRoutes />
+      </BrowserRouter>
+    </ThemeProvider>
   </React.StrictMode>
 );

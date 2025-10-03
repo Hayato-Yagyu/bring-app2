@@ -12,7 +12,7 @@ import { Menu } from "../components/Menu";
 
 // Firestoreに保存する1行分の型
 type UserDoc = {
-  id?: string | null; // CSVのid列（＝docIDに使用）
+  id?: string | null;
   staffcode?: string | null;
   displayName?: string | null;
   email?: string | null;
@@ -101,7 +101,7 @@ const UsersManagement: React.FC = () => {
   const gridRows = useMemo(
     () =>
       rowsRaw.map(({ docId, data }) => ({
-        id: docId, // DataGrid の必須フィールド（表示はしない）
+        id: docId,
         staffcode: data.staffcode ?? "",
         displayName: data.displayName ?? "",
         email: data.email ?? "",
@@ -230,21 +230,16 @@ const UsersManagement: React.FC = () => {
       {/* 本文（残り高さをすべて使う） */}
       <Box sx={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
         {/* タイトル（センター） */}
-        <Typography variant="h4" align="center" borderBottom={"2px solid gray"}>
+        <Typography variant="h4" align="center" sx={{ borderBottom: 2, borderColor: "primary.dark", color: "primary.main", pb: 1 }}>
           ユーザー管理
         </Typography>
 
-        {/* タイトルの下に、左端に「新規登録」「CSVインポート」を並べる（BringList と同様、ボーダーと離すため余白付与） */}
-        <Box sx={{ px: 2, pb: 1, mt: 2 }}>
+        {/* タイトル下ボタン行 */}
+        <Box>
           <Stack direction="row" spacing={1}>
             <Tooltip title="新規登録" arrow>
               <span>
-                <IconButton
-                  onClick={() => setNewOpen(true)}
-                  size="large"
-                  sx={{ color: "success.main" }} // 緑
-                  aria-label="新規登録"
-                >
+                <IconButton onClick={() => setNewOpen(true)} size="large" color="primary" aria-label="新規登録">
                   <PersonAddAlt1Icon />
                 </IconButton>
               </span>
@@ -252,13 +247,7 @@ const UsersManagement: React.FC = () => {
 
             <Tooltip title="CSVからインポート" arrow>
               <span>
-                <IconButton
-                  onClick={onClickImport}
-                  size="large"
-                  sx={{ color: "success.main" }} // 緑
-                  aria-label="CSVからインポート"
-                  disabled={importing}
-                >
+                <IconButton onClick={onClickImport} size="large" color="primary" aria-label="CSVからインポート" disabled={importing}>
                   <FileUploadIcon />
                 </IconButton>
               </span>
@@ -271,7 +260,7 @@ const UsersManagement: React.FC = () => {
 
         {importing && (
           <Box sx={{ px: 2, pb: 1 }}>
-            <LinearProgress variant="determinate" value={progress} />
+            <LinearProgress variant="determinate" value={progress} color="primary" />
             <Typography variant="caption">
               {progress}% {message ?? ""}
             </Typography>
