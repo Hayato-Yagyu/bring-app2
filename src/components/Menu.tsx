@@ -6,6 +6,7 @@ import { useNavigate } from "react-router-dom";
 import LogoutIcon from "@mui/icons-material/Logout";
 import PersonAddAlt1Icon from "@mui/icons-material/PersonAddAlt1";
 import ListAltIcon from "@mui/icons-material/ListAlt"; // BringList へ
+import ApprovalsInboxButton from "./ApprovalsInboxButton"; // ★ 追加：承認バッジボタン
 
 export const Menu: React.FC = () => {
   const navigate = useNavigate();
@@ -22,11 +23,9 @@ export const Menu: React.FC = () => {
           component="section"
           sx={{
             p: 2,
-            // 枠線は dashed のまま、色だけテーマの濃い方に
             border: 1,
             borderStyle: "dashed",
             borderColor: "primary.dark",
-            // 背景と文字色をテーマ依存に（ピンクへ自動追従）
             bgcolor: "primary.main",
             color: "primary.contrastText",
             display: "flex",
@@ -42,7 +41,7 @@ export const Menu: React.FC = () => {
             </Tooltip>
           </Box>
 
-          {/* 右：アイコン群（色は親の color を継承） */}
+          {/* 右：アイコン群 */}
           <ButtonGroup size="large" aria-label="Large button group">
             <Tooltip title="媒体等持込持出一覧" arrow>
               <IconButton onClick={handleLogoClick} color="inherit" aria-label="媒体等持込持出一覧">
@@ -55,6 +54,9 @@ export const Menu: React.FC = () => {
                 <PersonAddAlt1Icon />
               </IconButton>
             </Tooltip>
+
+            {/* ★ 承認バッジ（管理者のみ内部で表示）。クリックで一覧ダイアログ */}
+            <ApprovalsInboxButton />
 
             <Tooltip title="ログアウト" arrow>
               <IconButton onClick={handleLogin} color="inherit" aria-label="ログアウト">

@@ -2,7 +2,7 @@
 import React, { SetStateAction, useEffect, useState } from "react";
 import { Dialog, DialogTitle, DialogContent, DialogActions, Button, Stack, Typography, TextField, MenuItem, Box, Paper } from "@mui/material";
 import styled from "@emotion/styled";
-import { collection, addDoc, getDocs } from "firebase/firestore";
+import { collection, addDoc, getDocs, serverTimestamp } from "firebase/firestore"; // ★ serverTimestamp 追加
 import { db } from "../firebase";
 import emailjs from "@emailjs/browser";
 import ComfirmDialog from "./ComfirmDialog";
@@ -12,24 +12,29 @@ import { useUser } from "../components/UserContext";
 type Props = {
   open: boolean;
   onClose: () => void;
-  onSaved?: () => void; // 保存成功時に呼ばれる（一覧の再読込やトースト等に利用）
+  onSaved?: () => void;
 };
 
 type Approver = { name: string; email: string };
 
-// ★ EmailJS（あなたの環境に合わせて保持）
 const EMAILJS_SERVICE_ID = "service_0sslyge";
 const EMAILJS_TEMPLATE_ID = "template_81c28kt";
 
 const NewPostDialog: React.FC<Props> = ({ open, onClose, onSaved }) => {
   const [applicantdate, setApplicantdate] = useState("");
-  const [applicant, setApplicant] = useState(""); // ← ログインユーザーから自動セット
+  const [applicant, setApplicant] = useState("");
   const [classification, setClassification] = useState("");
   const [periodfrom, setPeriodfrom] = useState("");
   const [periodto, setPeriodto] = useState("");
   const [where, setWhere] = useState("");
+
+  // UI: 設備番号
   const [materials, setMaterials] = useState("");
+
+  // UI: 設備（選択）
   const [media, setMedia] = useState("");
+  const [mediaOther, setMediaOther] = useState("");
+
   const [permitdate, setPermitdate] = useState("");
   const [permitstamp, setPermitstamp] = useState("");
   const [confirmationdate, setConfirmationdate] = useState("");
@@ -51,13 +56,11 @@ const NewPostDialog: React.FC<Props> = ({ open, onClose, onSaved }) => {
 
   const handleCloseDialog = () => setOpenDialog(false);
 
-  // ▼ 申請者をログインユーザーから自動セット
   useEffect(() => {
     const name = (user as any)?.displayName?.trim?.() || (user as any)?.email || "";
     setApplicant(name);
   }, [user]);
 
-  // 承認先選択時に氏名も同期
   useEffect(() => {
     const a = approvers.find((x) => x.email === toEmail);
     setToName(a?.name ?? "");
@@ -73,7 +76,6 @@ const NewPostDialog: React.FC<Props> = ({ open, onClose, onSaved }) => {
     return ok;
   };
 
-  // 承認者マスタ取得（ダイアログが開いたタイミングで取得すると安全）
   useEffect(() => {
     if (!open) return;
     const loadApprovers = async () => {
@@ -97,11 +99,14 @@ const NewPostDialog: React.FC<Props> = ({ open, onClose, onSaved }) => {
     loadApprovers();
   }, [open]);
 
+  useEffect(() => {
+    if (!open) setIsSubmitted(false);
+  }, [open]);
+
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (isSending) return;
 
-    // 未入力チェック
     if (!applicantdate.trim() || !applicant.trim() || !classification.trim() || !periodfrom.trim() || !periodto.trim() || !where.trim() || !materials.trim() || !media.trim()) {
       setDialogMessage("入力されていないフィールドがあります。");
       setOpenDialog(true);
@@ -120,17 +125,28 @@ const NewPostDialog: React.FC<Props> = ({ open, onClose, onSaved }) => {
       return;
     }
 
+    if (media === "その他" && !mediaOther.trim()) {
+      setDialogMessage("設備で『その他』を選択した場合は、具体的な名称を入力してください。");
+      setOpenDialog(true);
+      return;
+    }
+
     setIsSending(true);
     try {
-      const docRef = await addDoc(collection(db, "posts"), {
+      // 保存用に設備名を正規化
+      const mediaDisplay = media === "その他" ? mediaOther.trim() : media;
+
+      // 1) posts へ登録
+      const postPayload = {
         applicantdate,
         applicant,
         classification,
         periodfrom,
         periodto,
         where,
-        materials,
-        media,
+        materials: mediaDisplay, // 設備名
+        media: materials, // 設備番号
+        mediaRaw: media,
         permitdate,
         permitstamp,
         confirmationdate,
@@ -138,8 +154,36 @@ const NewPostDialog: React.FC<Props> = ({ open, onClose, onSaved }) => {
         notifyTo: toEmail,
         requestedBy: user?.email ?? "",
         requestedAt: new Date().toISOString(),
-      });
+      };
+      const docRef = await addDoc(collection(db, "posts"), postPayload);
 
+      // 2) approvals へ「未処理タスク」を作成（★ 承認バッジ用）
+      const approvalPayload = {
+        type: "new", // "new" | "change" | "return"
+        status: "pending", // "pending" | "approved" | "rejected"
+        postId: docRef.id, // 紐づく posts のID
+        assigneeEmail: toEmail, // 承認者メール（バッジの対象判定）
+        assigneeName: toName,
+        requestedBy: user?.email ?? "",
+        requestedAt: serverTimestamp(), // サーバ時刻でOK
+        // 画面に出すためのスナップショット（任意に減らしてもOK）
+        snapshot: {
+          id: docRef.id,
+          applicantdate,
+          applicant,
+          classification,
+          periodfrom,
+          periodto,
+          where,
+          materials: mediaDisplay,
+          media: materials,
+        },
+        // 参照リンクなど（必要なら）
+        link: "https://kdsbring.netlify.app/",
+      };
+      await addDoc(collection(db, "approvals"), approvalPayload);
+
+      // 3) 承認メール送信（EmailJS）
       const emailHtml = "https://kdsbring.netlify.app/";
       const templateParams = {
         to_name: toName,
@@ -153,17 +197,16 @@ const NewPostDialog: React.FC<Props> = ({ open, onClose, onSaved }) => {
         periodfrom,
         periodto,
         where,
-        materials,
-        media,
+        materials: mediaDisplay, // 設備名
+        media: materials, // 設備番号
         link: emailHtml,
       };
-
       const res = await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, templateParams);
       console.log("EmailJS send success:", res);
 
       setIsSubmitted(true);
 
-      // 入力を軽くリセット（applicant はログインユーザーなので保持）
+      // 入力クリア
       setApplicantdate("");
       setClassification("");
       setPeriodfrom("");
@@ -171,13 +214,13 @@ const NewPostDialog: React.FC<Props> = ({ open, onClose, onSaved }) => {
       setWhere("");
       setMaterials("");
       setMedia("");
+      setMediaOther("");
       setPermitdate("");
       setPermitstamp("");
       setConfirmationdate("");
       setConfirmationstamp("");
       setDateError(null);
 
-      // 呼び出し元へ通知 → ダイアログを閉じる
       onSaved?.();
       onClose();
     } catch (err: any) {
@@ -192,13 +235,13 @@ const NewPostDialog: React.FC<Props> = ({ open, onClose, onSaved }) => {
   const handleReset = () => {
     if (isSending) return;
     setApplicantdate("");
-    // applicant はログインユーザーなので保持
     setClassification("");
     setPeriodfrom("");
     setPeriodto("");
     setWhere("");
     setMaterials("");
     setMedia("");
+    setMediaOther("");
     setPermitdate("");
     setPermitstamp("");
     setConfirmationdate("");
@@ -206,7 +249,6 @@ const NewPostDialog: React.FC<Props> = ({ open, onClose, onSaved }) => {
     setIsSubmitted(false);
     setSelectedOption("");
     setDateError(null);
-    // ページ遷移しない。ダイアログだけ閉じる
     onClose();
   };
 
@@ -227,7 +269,7 @@ const NewPostDialog: React.FC<Props> = ({ open, onClose, onSaved }) => {
   };
 
   return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm" keepMounted>
+    <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
       <DialogTitle>新規登録</DialogTitle>
       <DialogContent dividers>
         <Outer>
@@ -240,7 +282,6 @@ const NewPostDialog: React.FC<Props> = ({ open, onClose, onSaved }) => {
               }}
             >
               <Stack direction="column" spacing={0.5}>
-                {/* 申請者（ログインユーザー） */}
                 <TextField label="申請者" variant="standard" size="small" margin="dense" fullWidth InputLabelProps={{ shrink: true }} value={applicant} InputProps={{ readOnly: true }} />
 
                 <TextField
@@ -334,10 +375,57 @@ const NewPostDialog: React.FC<Props> = ({ open, onClose, onSaved }) => {
                   ))}
                 </TextField>
 
-                {selectedOption === "その他" && <TextField label="Other" variant="standard" size="small" margin="dense" fullWidth value={otherInput} onChange={handleOtherInputChange} />}
+                {selectedOption === "その他" && (
+                  <TextField
+                    label="持込・持出先（その他の内容）"
+                    variant="standard"
+                    size="small"
+                    margin="dense"
+                    fullWidth
+                    value={otherInput}
+                    onChange={handleOtherInputChange}
+                    placeholder="例）○○顧客先、○○工場 など"
+                  />
+                )}
 
                 <TextField
-                  label="データまたは資料名"
+                  label="設備"
+                  select
+                  variant="standard"
+                  size="small"
+                  margin="dense"
+                  fullWidth
+                  InputLabelProps={{ shrink: true }}
+                  value={media}
+                  onChange={(e) => {
+                    const v = e.target.value as string;
+                    setMedia(v);
+                    if (v !== "その他") setMediaOther("");
+                  }}
+                >
+                  <MenuItem value="PC">PC</MenuItem>
+                  <MenuItem value="スマートフォン">スマートフォン</MenuItem>
+                  <MenuItem value="USBメモリ">USBメモリ</MenuItem>
+                  <MenuItem value="外付けHDD">外付けHDD</MenuItem>
+                  <MenuItem value="その他">その他</MenuItem>
+                </TextField>
+
+                {media === "その他" && (
+                  <TextField
+                    label="設備（その他の内容）"
+                    variant="standard"
+                    size="small"
+                    margin="dense"
+                    fullWidth
+                    InputLabelProps={{ shrink: true }}
+                    value={mediaOther}
+                    onChange={(e) => setMediaOther(e.target.value)}
+                    placeholder="例）タブレット端末、計測機器 など"
+                  />
+                )}
+
+                <TextField
+                  label="設備番号"
                   variant="standard"
                   size="small"
                   margin="dense"
@@ -347,30 +435,11 @@ const NewPostDialog: React.FC<Props> = ({ open, onClose, onSaved }) => {
                   onChange={(e) => setMaterials(e.target.value)}
                 />
 
-                <TextField
-                  label="媒体・ＰＣ 設備番号"
-                  select
-                  variant="standard"
-                  size="small"
-                  margin="dense"
-                  fullWidth
-                  InputLabelProps={{ shrink: true }}
-                  value={media}
-                  onChange={(e) => setMedia(e.target.value)}
-                >
-                  <MenuItem value="PC">PC</MenuItem>
-                  <MenuItem value="スマートフォン">スマートフォン</MenuItem>
-                  <MenuItem value="USBメモリ">USBメモリ</MenuItem>
-                  <MenuItem value="外付けHDD">外付けHDD</MenuItem>
-                  <MenuItem value="その他">その他</MenuItem>
-                </TextField>
-
-                {/* ボタン行 */}
                 <Box sx={{ display: "flex", gap: 1, pt: 0.5 }}>
                   <Button onClick={handleReset} variant="outlined" size="small" sx={{ flex: 1 }} disabled={isSending}>
                     キャンセル
                   </Button>
-                  <Button variant="contained" type="submit" size="small" sx={{ flex: 1 }} disabled={!!dateError || !toEmail || isSending}>
+                  <Button variant="contained" type="submit" size="small" sx={{ flex: 1 }} disabled={!!dateError || !toEmail || isSending || (media === "その他" && !mediaOther.trim())}>
                     {isSending ? "送信中..." : "承認依頼"}
                   </Button>
                 </Box>
@@ -379,14 +448,12 @@ const NewPostDialog: React.FC<Props> = ({ open, onClose, onSaved }) => {
           </Paper>
         </Outer>
 
-        {/* 送信後の簡易メッセージ（必要ならトーストに差し替え可） */}
-        {isSubmitted && (
+        {open && isSubmitted && (
           <Paper elevation={0} sx={{ mt: 1, p: 1 }}>
             <Typography variant="body2">承認依頼されました！</Typography>
           </Paper>
         )}
 
-        {/* 確認ダイアログ（バリデーションやエラー時） */}
         <ComfirmDialog open={openDialog} onClose={handleCloseDialog} title="確認！" content={dialogMessage} actions={<Button onClick={handleCloseDialog}>閉じる</Button>} />
       </DialogContent>
 

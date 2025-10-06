@@ -11,9 +11,12 @@ import NoteAddIcon from "@mui/icons-material/NoteAdd";
 import DownloadIcon from "@mui/icons-material/Download";
 import DeleteButton from "./DeleteButton";
 import EditButton from "./EditButton";
-import ReturnButton from "./ReturnButtun";
 import { useUser } from "./UserContext";
 import NewPostDialog from "../components/NewPostDialog";
+
+// ★ 追加
+import { useLocation, useNavigate } from "react-router-dom";
+import ApprovalsDialog from "./ApprovalsDialog";
 
 export const BringList = () => {
   const { user } = useUser();
@@ -21,6 +24,11 @@ export const BringList = () => {
 
   const [posts, setPosts] = useState([]);
   const [openNew, setOpenNew] = useState(false);
+
+  // ★ 追加：承認ダイアログの開閉
+  const [openApprovals, setOpenApprovals] = useState(false);
+  const location = useLocation();
+  const navigate = useNavigate();
 
   const fetchPosts = useCallback(async () => {
     try {
@@ -40,6 +48,16 @@ export const BringList = () => {
     fetchPosts();
   }, [fetchPosts]);
 
+  // ★ 追加：メールボックスから来たときだけ開く
+  useEffect(() => {
+    const flag = location.state && location.state.approvalsOpen;
+    if (flag) {
+      setOpenApprovals(true);
+      // 一度開いたら state は消しておく（再読込でまた開かないように）
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [location, navigate]);
+
   const defaultSortModel = [{ field: "applicantdate", sort: "desc" }];
 
   const columns = [
@@ -49,7 +67,7 @@ export const BringList = () => {
       sortable: false,
       width: 76,
       disableClickEventBubbling: true,
-      renderCell: (params) => <DeleteButton rowId={params.id} sharedState={posts} setSharedState={setPosts} disabled={!isAuthorized} />,
+      renderCell: (params) => <DeleteButton rowId={params.id} sharedState={posts} setSharedState={setPosts} disabled={!isAuthorized} icon />,
     },
     {
       field: "editBtn",
@@ -57,15 +75,7 @@ export const BringList = () => {
       sortable: false,
       width: 76,
       disableClickEventBubbling: true,
-      renderCell: (params) => <EditButton rowData={params.row} setSharedState={setPosts} disabled={!isAuthorized} />,
-    },
-    {
-      field: "returnBtn",
-      headerName: "返却",
-      sortable: false,
-      width: 76,
-      disableClickEventBubbling: true,
-      renderCell: (params) => <ReturnButton rowId={params.id} rowData={params.row} />,
+      renderCell: (params) => <EditButton rowData={params.row} setSharedState={setPosts} disabled={!isAuthorized} icon />,
     },
     { field: "id", headerName: "ID", width: 96 },
     { field: "applicantdate", headerName: "申請日", flex: 1, minWidth: 100 },
@@ -74,8 +84,8 @@ export const BringList = () => {
     { field: "periodfrom", headerName: "持込・持出日 から", flex: 1, minWidth: 140 },
     { field: "periodto", headerName: "持込・持出日 まで", flex: 1, minWidth: 140 },
     { field: "where", headerName: "持込・持出先", flex: 1, minWidth: 140 },
-    { field: "materials", headerName: "データまたは資料名", flex: 2, minWidth: 180 },
-    { field: "media", headerName: "媒体・ＰＣ 設備番号", flex: 1, minWidth: 160 },
+    { field: "materials", headerName: "設備", flex: 2, minWidth: 180 },
+    { field: "media", headerName: "設備番号", flex: 1, minWidth: 160 },
     { field: "permitdate", headerName: "許可日", flex: 1, minWidth: 100 },
     { field: "permitstamp", headerName: "許可者", flex: 1, minWidth: 100 },
     { field: "confirmationdate", headerName: "返却確認日", flex: 1, minWidth: 120 },
@@ -162,21 +172,9 @@ export const BringList = () => {
             sortModel={defaultSortModel}
             rowHeight={40}
             sx={{
-              "&.MuiDataGrid-root, & .MuiDataGrid-main, & .MuiDataGrid-virtualScroller, & .MuiDataGrid-columnHeaders": {
-                overflowX: "clip",
-              },
-              // ← ヘッダ色・行色はテーマで統一。ここでは上書きしない
-              "& .MuiDataGrid-columnHeader": {
-                whiteSpace: "normal",
-                overflow: "visible",
-                textOverflow: "clip",
-                lineHeight: "1.5 !important",
-                maxHeight: "none !important",
-              },
-              "& .MuiDataGrid-cell": {
-                whiteSpace: "normal",
-                wordWrap: "break-word",
-              },
+              "&.MuiDataGrid-root, & .MuiDataGrid-main, & .MuiDataGrid-virtualScroller, & .MuiDataGrid-columnHeaders": { overflowX: "clip" },
+              "& .MuiDataGrid-columnHeader": { whiteSpace: "normal", overflow: "visible", textOverflow: "clip", lineHeight: "1.5 !important", maxHeight: "none !important" },
+              "& .MuiDataGrid-cell": { whiteSpace: "normal", wordWrap: "break-word" },
             }}
           />
         </Box>
@@ -189,6 +187,9 @@ export const BringList = () => {
           fetchPosts();
         }}
       />
+
+      {/* ★ ここで常駐させる：ヘッダのバッジ→BringListに遷移→即オープン */}
+      <ApprovalsDialog open={openApprovals} onClose={() => setOpenApprovals(false)} />
     </Box>
   );
 };
