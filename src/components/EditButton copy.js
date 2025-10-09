@@ -181,7 +181,7 @@ export const EditButton = ({ rowData, setSharedState, disabled, icon = false }) 
     }
     try {
       setSaving(true);
-      await updateDoc(doc(db, "posts", id), payload);
+      await updateDoc(doc(db, "posts", id), payload); // Firestore 更新 :contentReference[oaicite:3]{index=3}
 
       // 一覧再読込（親から関数が渡されている場合のみ）
       if (typeof setSharedState === "function") {
@@ -237,9 +237,6 @@ export const EditButton = ({ rowData, setSharedState, disabled, icon = false }) 
   };
 
   const whereOptions = Array.isArray(Where) ? Where : [];
-
-  // ★★★ ここがポイント：登録承認（permitdate & permitstamp）が揃っているか判定
-  const isReturnAllowed = Boolean((formData?.permitdate || "").trim() && (formData?.permitstamp || "").trim());
 
   return (
     <div>
@@ -421,15 +418,9 @@ export const EditButton = ({ rowData, setSharedState, disabled, icon = false }) 
             <Button variant="contained" color="primary" onClick={handleChangeApply} sx={{ width: 140 }} disabled={saving}>
               {saving ? "保存中..." : "変更申請"}
             </Button>
-
-            {/* ★ 返却申請は登録承認済み（permitdate & permitstamp）でないと押せない */}
-            <Tooltip title={isReturnAllowed ? "" : "登録承認（承認日付・承認者）が未登録のため返却申請できません"} arrow>
-              <span>
-                <Button variant="contained" color="primary" onClick={() => isReturnAllowed && setReturnOpen(true)} sx={{ width: 140 }} disabled={!isReturnAllowed}>
-                  返却申請
-                </Button>
-              </span>
-            </Tooltip>
+            <Button variant="contained" color="primary" onClick={() => setReturnOpen(true)} sx={{ width: 140 }}>
+              返却申請
+            </Button>
           </Box>
         </Box>
       </Modal>

@@ -87,26 +87,16 @@ const ApprovalsDialog: React.FC<Props> = ({ open, onClose }) => {
 
   // ★ 新規承認 → posts に permitdate/permitstamp を付与（他フィールドは触らない）
   const approveNew = async (r: ApprovalRow) => {
-    const postRef = doc(db, "posts", r.postId);
     const p = {
       permitdate: todayStr(),
       permitstamp: approverName,
       updatedAt: serverTimestamp(),
     };
-    await updateDoc(postRef, p);
-
-    // ★ approvals.snapshot にも同じ値を書き戻し（一覧が approvals.snapshot を見ていても即時反映される）
-    const approvalRef = doc(db, "approvals", r.id);
-    await updateDoc(approvalRef, {
-      "snapshot.permitdate": p.permitdate,
-      "snapshot.permitstamp": p.permitstamp,
-      updatedAt: serverTimestamp(),
-    });
+    await updateDoc(doc(db, "posts", r.postId), p);
   };
 
   // 変更承認 → snapshot を反映し、permitdate/permitstamp も設定
   const approveChange = async (r: ApprovalRow) => {
-    const postRef = doc(db, "posts", r.postId);
     const p = {
       applicantdate: r.snapshot?.applicantdate ?? "",
       applicant: r.snapshot?.applicant ?? "",
@@ -121,23 +111,7 @@ const ApprovalsDialog: React.FC<Props> = ({ open, onClose }) => {
       permitstamp: approverName,
       updatedAt: serverTimestamp(),
     };
-    await updateDoc(postRef, p);
-
-    // ★ approvals.snapshot も更新
-    const approvalRef = doc(db, "approvals", r.id);
-    await updateDoc(approvalRef, {
-      "snapshot.applicantdate": p.applicantdate,
-      "snapshot.applicant": p.applicant,
-      "snapshot.classification": p.classification,
-      "snapshot.periodfrom": p.periodfrom,
-      "snapshot.periodto": p.periodto,
-      "snapshot.where": p.where,
-      "snapshot.materials": p.materials,
-      "snapshot.media": p.media,
-      "snapshot.permitdate": p.permitdate,
-      "snapshot.permitstamp": p.permitstamp,
-      updatedAt: serverTimestamp(),
-    });
+    await updateDoc(doc(db, "posts", r.postId), p);
   };
 
   // approvals ドキュメントの状態更新
@@ -200,34 +174,27 @@ const ApprovalsDialog: React.FC<Props> = ({ open, onClose }) => {
     const permitstamp = post?.permitstamp ?? "";
 
     if (!permitdate || !permitstamp) {
-      const note = "返却承認できません。登録承認日付/承認者（permitdate/permitstamp）が未登録です。";
+      const note = "返却承認できません。許可日/許可印（permitdate/permitstamp）が未登録です。";
       await markApproval(r, "rejected", { rejectNote: note, autoRejected: true });
       await sendResultMail(r, "rejected", note);
       return false; // 承認処理は行わない
     }
 
-    // 前提クリア → 返却確認の印を押す（posts）
-    const patch = {
+    // 前提クリア → 返却確認の印を押す
+    const p = {
       confirmationdate: todayStr(),
       confirmationstamp: approverName,
       updatedAt: serverTimestamp(),
     };
-    await updateDoc(postRef, patch);
-
-    // ★ approvals.snapshot にも書き戻し（一覧が approvals.snapshot を見ている場合に即反映）
-    const approvalRef = doc(db, "approvals", r.id);
-    await updateDoc(approvalRef, {
-      "snapshot.confirmationdate": patch.confirmationdate,
-      "snapshot.confirmationstamp": patch.confirmationstamp,
-      updatedAt: serverTimestamp(),
-    });
-
+    await updateDoc(postRef, p);
     return true; // 承認へ進める
   };
 
-  // 任意：一覧へ即時通知したい場合のカスタムイベント（必要なら）
+  // ★ 一覧側へ即時反映を促すためのアプリ内イベント（任意）
   const notifyLists = (postId: string, approvalId: string) => {
+    // posts を表示している一覧へ
     window.dispatchEvent(new CustomEvent("posts-updated", { detail: { postId } }));
+    // approvals を表示している一覧へ
     window.dispatchEvent(new CustomEvent("approvals-updated", { detail: { approvalId } }));
   };
 
@@ -252,6 +219,8 @@ const ApprovalsDialog: React.FC<Props> = ({ open, onClose }) => {
           await sendResultMail(r, "approved");
           notifyLists(r.postId, r.id);
         }
+        // ok=false の場合は approveReturn 内で自動却下済み（そこでも通知は不要だが、必要なら下行を解除）
+        // else notifyLists(r.postId, r.id);
       }
     } catch (e) {
       console.error("承認処理/通知に失敗:", e);
@@ -317,9 +286,6 @@ const ApprovalsDialog: React.FC<Props> = ({ open, onClose }) => {
                           <Typography variant="body2">
                             期間: {r.snapshot?.periodfrom || "-"} 〜 {r.snapshot?.periodto || "-"}
                           </Typography>
-                          {/* 必要ならここに表示用の承認印も */}
-                          {/* <Typography variant="body2">登録承認日付: {r.snapshot?.permitdate || "-"}</Typography>
-                          <Typography variant="body2">承認者: {r.snapshot?.permitstamp || "-"}</Typography> */}
                         </>
                       ) : (
                         <>
@@ -327,9 +293,6 @@ const ApprovalsDialog: React.FC<Props> = ({ open, onClose }) => {
                             返却対象: {r.snapshot?.materials || "-"}（設備番号: {r.snapshot?.media || "-"}）
                           </Typography>
                           <Typography variant="body2">申請者: {r.snapshot?.applicant || "-"}</Typography>
-                          {/* 必要ならここに返却承認の表示も */}
-                          {/* <Typography variant="body2">返却承認日付: {r.snapshot?.confirmationdate || "-"}</Typography>
-                          <Typography variant="body2">承認者: {r.snapshot?.confirmationstamp || "-"}</Typography> */}
                         </>
                       )}
                       <TextField

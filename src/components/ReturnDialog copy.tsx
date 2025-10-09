@@ -6,7 +6,7 @@ import { collection, getDocs, query, where } from "firebase/firestore";
 import { db } from "../firebase";
 
 const EMAILJS_SERVICE_ID = "service_0sslyge";
-const EMAILJS_TEMPLATE_ID = "template_81c28kt";
+const EMAILJS_TEMPLATE_ID = "template_h2bmeqd";
 
 type Approver = { name: string; email: string };
 
@@ -90,7 +90,6 @@ const ReturnDialog: React.FC<Props> = ({ open, onClose, onCloseAll, rowId, rowDa
       materials: rowData?.materials ?? "",
       media: rowData?.media ?? "",
       link: emailHtml,
-      action: "返却",
     };
 
     try {

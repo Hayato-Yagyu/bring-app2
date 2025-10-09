@@ -2,8 +2,8 @@
 import * as React from "react";
 import Box from "@mui/material/Box";
 import { DataGrid } from "@mui/x-data-grid";
-import { collection, getDocs } from "firebase/firestore";
-import { useEffect, useState, useCallback } from "react";
+import { collection, onSnapshot, query, orderBy, where, limit } from "firebase/firestore";
+import { useEffect, useState } from "react";
 import { db } from "../firebase";
 import { Menu } from "./Menu";
 import { Typography, Stack, Tooltip, IconButton } from "@mui/material";
@@ -11,35 +11,79 @@ import NoteAddIcon from "@mui/icons-material/NoteAdd";
 import DownloadIcon from "@mui/icons-material/Download";
 import DeleteButton from "./DeleteButton";
 import EditButton from "./EditButton";
-import ReturnButton from "./ReturnButtun";
 import { useUser } from "./UserContext";
 import NewPostDialog from "../components/NewPostDialog";
 
+// ルーティング
+import { useLocation, useNavigate } from "react-router-dom";
+import ApprovalsDialog from "./ApprovalsDialog";
+
 export const BringList = () => {
   const { user } = useUser();
-  const isAuthorized = user && user.email === "hayato.yagyu@digitalsoft.co.jp";
+  const userEmail = user?.email ?? "";
 
   const [posts, setPosts] = useState([]);
   const [openNew, setOpenNew] = useState(false);
 
-  const fetchPosts = useCallback(async () => {
-    try {
-      const postsRef = collection(db, "posts");
-      const querySnapshot = await getDocs(postsRef);
-      const postData = querySnapshot.docs.map((doc) => ({
-        ...doc.data(),
-        id: doc.id,
-      }));
-      setPosts(postData);
-    } catch (error) {
-      console.error("Error fetching posts:", error);
-    }
+  // 承認ダイアログの開閉
+  const [openApprovals, setOpenApprovals] = useState(false);
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  // ★ 監督責任フラグ（users.supervising_responsible）
+  const [isSupervisor, setIsSupervisor] = useState(false);
+
+  // posts をリアルタイム購読
+  useEffect(() => {
+    const q = query(collection(db, "posts"), orderBy("applicantdate", "desc"));
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        setPosts(list);
+      },
+      (err) => {
+        console.error("onSnapshot(posts) failed:", err);
+      }
+    );
+    return () => unsub();
   }, []);
 
+  // users から supervising_responsible をリアルタイム購読
   useEffect(() => {
-    fetchPosts();
-  }, [fetchPosts]);
+    if (!userEmail) {
+      setIsSupervisor(false);
+      return;
+    }
+    const usersRef = collection(db, "users");
+    const q = query(usersRef, where("email", "==", userEmail), where("supervising_responsible", "==", true), limit(1));
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        setIsSupervisor(!snap.empty);
+      },
+      (err) => {
+        console.error("onSnapshot(users) failed:", err);
+        setIsSupervisor(false);
+      }
+    );
+    return () => unsub();
+  }, [userEmail]);
 
+  // メールのリンク等で来た場合に承認ダイアログを自動オープン
+  useEffect(() => {
+    const flag = location.state && location.state.approvalsOpen;
+    if (flag) {
+      setOpenApprovals(true);
+      // 再読込でまた開かないように state をクリア
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [location, navigate]);
+
+  // 返却承認済みかどうかのユーティリティ
+  const isReturnedRow = (row) => Boolean((row?.confirmationdate && String(row.confirmationdate).trim()) || (row?.confirmationstamp && String(row.confirmationstamp).trim()));
+
+  // DataGrid の初期並び（クエリ側で orderBy 済なのでここは任意）
   const defaultSortModel = [{ field: "applicantdate", sort: "desc" }];
 
   const columns = [
@@ -49,7 +93,8 @@ export const BringList = () => {
       sortable: false,
       width: 76,
       disableClickEventBubbling: true,
-      renderCell: (params) => <DeleteButton rowId={params.id} sharedState={posts} setSharedState={setPosts} disabled={!isAuthorized} />,
+      // supervising_responsible のみ有効
+      renderCell: (params) => <DeleteButton rowId={params.id} sharedState={posts} setSharedState={setPosts} disabled={!isSupervisor} icon />,
     },
     {
       field: "editBtn",
@@ -57,15 +102,12 @@ export const BringList = () => {
       sortable: false,
       width: 76,
       disableClickEventBubbling: true,
-      renderCell: (params) => <EditButton rowData={params.row} setSharedState={setPosts} disabled={!isAuthorized} />,
-    },
-    {
-      field: "returnBtn",
-      headerName: "返却",
-      sortable: false,
-      width: 76,
-      disableClickEventBubbling: true,
-      renderCell: (params) => <ReturnButton rowId={params.id} rowData={params.row} />,
+      // ★ 返却承認済みは一般ユーザは編集不可。ただし supervisor は編集可
+      renderCell: (params) => {
+        const lockedByReturn = isReturnedRow(params.row);
+        const disabled = !isSupervisor && lockedByReturn;
+        return <EditButton rowData={params.row} setSharedState={setPosts} disabled={disabled} icon />;
+      },
     },
     { field: "id", headerName: "ID", width: 96 },
     { field: "applicantdate", headerName: "申請日", flex: 1, minWidth: 100 },
@@ -76,12 +118,13 @@ export const BringList = () => {
     { field: "where", headerName: "持込・持出先", flex: 1, minWidth: 140 },
     { field: "materials", headerName: "設備", flex: 2, minWidth: 180 },
     { field: "media", headerName: "設備番号", flex: 1, minWidth: 160 },
-    { field: "permitdate", headerName: "許可日", flex: 1, minWidth: 100 },
-    { field: "permitstamp", headerName: "許可者", flex: 1, minWidth: 100 },
-    { field: "confirmationdate", headerName: "返却確認日", flex: 1, minWidth: 120 },
-    { field: "confirmationstamp", headerName: "確認者", flex: 1, minWidth: 100 },
+    { field: "permitdate", headerName: "登録承認日付", flex: 1, minWidth: 100 },
+    { field: "permitstamp", headerName: "承認者", flex: 1, minWidth: 100 },
+    { field: "confirmationdate", headerName: "返却承認日付", flex: 1, minWidth: 120 },
+    { field: "confirmationstamp", headerName: "承認者", flex: 1, minWidth: 100 },
   ];
 
+  // CSV 出力（state posts をそのまま利用）
   const csvData = [...posts]
     .sort((a, b) => new Date(b.applicantdate || "").getTime() - new Date(a.applicantdate || "").getTime())
     .map((row) => ({
@@ -162,33 +205,18 @@ export const BringList = () => {
             sortModel={defaultSortModel}
             rowHeight={40}
             sx={{
-              "&.MuiDataGrid-root, & .MuiDataGrid-main, & .MuiDataGrid-virtualScroller, & .MuiDataGrid-columnHeaders": {
-                overflowX: "clip",
-              },
-              // ← ヘッダ色・行色はテーマで統一。ここでは上書きしない
-              "& .MuiDataGrid-columnHeader": {
-                whiteSpace: "normal",
-                overflow: "visible",
-                textOverflow: "clip",
-                lineHeight: "1.5 !important",
-                maxHeight: "none !important",
-              },
-              "& .MuiDataGrid-cell": {
-                whiteSpace: "normal",
-                wordWrap: "break-word",
-              },
+              "&.MuiDataGrid-root, & .MuiDataGrid-main, & .MuiDataGrid-virtualScroller, & .MuiDataGrid-columnHeaders": { overflowX: "clip" },
+              "& .MuiDataGrid-columnHeader": { whiteSpace: "normal", overflow: "visible", textOverflow: "clip", lineHeight: "1.5 !important", maxHeight: "none !important" },
+              "& .MuiDataGrid-cell": { whiteSpace: "normal", wordWrap: "break-word" },
             }}
           />
         </Box>
       </Box>
 
-      <NewPostDialog
-        open={openNew}
-        onClose={() => setOpenNew(false)}
-        onSaved={() => {
-          fetchPosts();
-        }}
-      />
+      <NewPostDialog open={openNew} onClose={() => setOpenNew(false)} />
+
+      {/* 承認ダイアログ（メール→画面遷移で自動オープン対応済み） */}
+      <ApprovalsDialog open={openApprovals} onClose={() => setOpenApprovals(false)} />
     </Box>
   );
 };
