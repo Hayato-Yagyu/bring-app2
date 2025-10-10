@@ -6,52 +6,70 @@ import { useNavigate } from "react-router-dom";
 import LogoutIcon from "@mui/icons-material/Logout";
 import PersonAddAlt1Icon from "@mui/icons-material/PersonAddAlt1";
 import ListAltIcon from "@mui/icons-material/ListAlt"; // BringList へ
+import DevicesOtherIcon from "@mui/icons-material/DevicesOther"; // 機器台帳管理
 import ApprovalsInboxButton from "./ApprovalsInboxButton"; // 承認バッジボタン
 
-// ★ 追加：ユーザ情報と Firestore
+// ユーザ情報と Firestore
 import { useEffect, useState } from "react";
 import { useUser } from "./UserContext";
 import { db } from "../firebase";
-import { collection, onSnapshot, query, where, limit } from "firebase/firestore";
+import { collection, onSnapshot, query, where } from "firebase/firestore";
 
 export const Menu: React.FC = () => {
   const navigate = useNavigate();
 
-  // ★ 追加：ログインユーザ
+  // ログインユーザ
   const { user } = useUser();
-  const userEmail = user?.email ?? "";
+  const userEmail = (user?.email ?? "").trim();
 
-  // ★ 追加：監督責任（supervising_responsible）フラグ
-  const [isSupervisor, setIsSupervisor] = useState(false);
+  // 権限フラグ
+  const [isSupervisor, setIsSupervisor] = useState(false); // supervising_responsible
+  const [canManageEquipment, setCanManageEquipment] = useState(false); // equipmentManagement || supervising_responsible
 
-  // ★ 追加：users コレクションから権限をリアルタイム購読
+  // users コレクションから権限をリアルタイム購読
   useEffect(() => {
     // 未ログイン時は非表示
     if (!userEmail) {
       setIsSupervisor(false);
+      setCanManageEquipment(false);
       return;
     }
+
     const usersRef = collection(db, "users");
-    // email 一致 & supervising_responsible = true のドキュメントが存在するか
-    const q = query(usersRef, where("email", "==", userEmail), where("supervising_responsible", "==", true), limit(1));
+    // ★ email 完全一致で全件購読（limit(1)は付けない）
+    const q = query(usersRef, where("email", "==", userEmail));
 
     const unsub = onSnapshot(
       q,
       (snap) => {
-        setIsSupervisor(!snap.empty);
+        // 同一メールの複数ドキュメントを集計して OR 判定
+        let supervisor = false;
+        let equip = false;
+
+        snap.docs.forEach((d) => {
+          const v = d.data() as { supervising_responsible?: boolean; equipmentManagement?: boolean };
+          if (v?.supervising_responsible) supervisor = true;
+          if (v?.equipmentManagement) equip = true;
+        });
+
+        setIsSupervisor(supervisor);
+        setCanManageEquipment(supervisor || equip);
       },
       (err) => {
         console.error("users load error:", err);
         setIsSupervisor(false);
+        setCanManageEquipment(false);
       }
     );
 
     return () => unsub();
   }, [userEmail]);
 
+  // ルーティング
   const handleLogin = () => navigate("/");
   const handleLogoClick = () => navigate("/BringList");
   const handleUserMgmt = () => navigate("/users");
+  const handleEquipmentMgmt = () => navigate("/equipment");
 
   return (
     <>
@@ -87,7 +105,7 @@ export const Menu: React.FC = () => {
               </IconButton>
             </Tooltip>
 
-            {/* ★ supervising_responsible = true のときだけ表示 */}
+            {/* supervising_responsible = true のときだけ表示：ユーザ管理 */}
             {isSupervisor && (
               <Tooltip title="ユーザ管理" arrow>
                 <IconButton onClick={handleUserMgmt} color="inherit" aria-label="ユーザ管理">
@@ -96,7 +114,16 @@ export const Menu: React.FC = () => {
               </Tooltip>
             )}
 
-            {/* ★ supervising_responsible = true のときだけ承認バッジを表示 */}
+            {/* ★ 追加：ユーザ管理の次に表示（equipmentManagement または supervising_responsible が true） */}
+            {canManageEquipment && (
+              <Tooltip title="機器台帳管理" arrow>
+                <IconButton onClick={handleEquipmentMgmt} color="inherit" aria-label="機器台帳管理">
+                  <DevicesOtherIcon />
+                </IconButton>
+              </Tooltip>
+            )}
+
+            {/* supervising_responsible = true のときだけ承認バッジを表示 */}
             {isSupervisor && <ApprovalsInboxButton />}
 
             <Tooltip title="ログアウト" arrow>

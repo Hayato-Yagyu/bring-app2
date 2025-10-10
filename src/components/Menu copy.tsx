@@ -6,10 +6,48 @@ import { useNavigate } from "react-router-dom";
 import LogoutIcon from "@mui/icons-material/Logout";
 import PersonAddAlt1Icon from "@mui/icons-material/PersonAddAlt1";
 import ListAltIcon from "@mui/icons-material/ListAlt"; // BringList へ
-import ApprovalsInboxButton from "./ApprovalsInboxButton"; // ★ 追加：承認バッジボタン
+import ApprovalsInboxButton from "./ApprovalsInboxButton"; // 承認バッジボタン
+
+// ★ 追加：ユーザ情報と Firestore
+import { useEffect, useState } from "react";
+import { useUser } from "./UserContext";
+import { db } from "../firebase";
+import { collection, onSnapshot, query, where, limit } from "firebase/firestore";
 
 export const Menu: React.FC = () => {
   const navigate = useNavigate();
+
+  // ★ 追加：ログインユーザ
+  const { user } = useUser();
+  const userEmail = user?.email ?? "";
+
+  // ★ 追加：監督責任（supervising_responsible）フラグ
+  const [isSupervisor, setIsSupervisor] = useState(false);
+
+  // ★ 追加：users コレクションから権限をリアルタイム購読
+  useEffect(() => {
+    // 未ログイン時は非表示
+    if (!userEmail) {
+      setIsSupervisor(false);
+      return;
+    }
+    const usersRef = collection(db, "users");
+    // email 一致 & supervising_responsible = true のドキュメントが存在するか
+    const q = query(usersRef, where("email", "==", userEmail), where("supervising_responsible", "==", true), limit(1));
+
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        setIsSupervisor(!snap.empty);
+      },
+      (err) => {
+        console.error("users load error:", err);
+        setIsSupervisor(false);
+      }
+    );
+
+    return () => unsub();
+  }, [userEmail]);
 
   const handleLogin = () => navigate("/");
   const handleLogoClick = () => navigate("/BringList");
@@ -49,14 +87,17 @@ export const Menu: React.FC = () => {
               </IconButton>
             </Tooltip>
 
-            <Tooltip title="ユーザ管理" arrow>
-              <IconButton onClick={handleUserMgmt} color="inherit" aria-label="ユーザ管理">
-                <PersonAddAlt1Icon />
-              </IconButton>
-            </Tooltip>
+            {/* ★ supervising_responsible = true のときだけ表示 */}
+            {isSupervisor && (
+              <Tooltip title="ユーザ管理" arrow>
+                <IconButton onClick={handleUserMgmt} color="inherit" aria-label="ユーザ管理">
+                  <PersonAddAlt1Icon />
+                </IconButton>
+              </Tooltip>
+            )}
 
-            {/* ★ 承認バッジ（管理者のみ内部で表示）。クリックで一覧ダイアログ */}
-            <ApprovalsInboxButton />
+            {/* ★ supervising_responsible = true のときだけ承認バッジを表示 */}
+            {isSupervisor && <ApprovalsInboxButton />}
 
             <Tooltip title="ログアウト" arrow>
               <IconButton onClick={handleLogin} color="inherit" aria-label="ログアウト">

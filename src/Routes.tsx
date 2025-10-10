@@ -6,6 +6,7 @@ import BringList from "./components/BringList";
 import { UserProvider, useUser } from "./components/UserContext";
 import AuthRoute from "./routes/AuthRoute";
 import UsersManagement from "./components/UsersManagement";
+import EquipmentManagement from "./components/EquipmentManagement";
 
 export const AppRoutes = () => {
   return (
@@ -14,7 +15,7 @@ export const AppRoutes = () => {
         <Route path="/" element={<App />} />
         <Route path="/Auth" element={<AuthRoute />} />
         <Route path="/users" element={<UsersManagement />} />
-
+        <Route path="/equipment" element={<EquipmentManagement />} />
         <Route
           path="/BringList"
           element={
