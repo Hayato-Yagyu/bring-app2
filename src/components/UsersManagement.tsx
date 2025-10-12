@@ -57,23 +57,7 @@ const headerNormalizer = (raw: string) => {
   if (hl === "consignmen" || hl === "consignment") return "consignment";
   if (["equipment_management", "equipmentmgmt", "equipment", "equip_mgmt", "equip"].includes(hl)) return "equipmentManagement";
 
-  const canonical = [
-    "staffcode",
-    "displayName",
-    "email",
-    "group",
-    "partner",
-    "albite_part_timer",
-    "startDate",
-    "endDate",
-    "unitPrice",
-    "id",
-    "role",
-    "unForecasts",
-    "supervising_responsible",
-    "consignment",
-    "equipmentManagement",
-  ];
+  const canonical = ["staffcode", "displayName", "email", "group", "partner", "albite_part_timer", "startDate", "endDate", "unitPrice", "id", "role", "unForecasts", "supervising_responsible", "consignment", "equipmentManagement"];
   const exact = canonical.find((k) => k.toLowerCase() === hl);
   return exact ?? h;
 };
@@ -255,7 +239,7 @@ const UsersManagement: React.FC = () => {
         </Typography>
 
         <Box>
-          <Stack direction="row" spacing={1}>
+          <Stack direction="row">
             <Tooltip title="新規登録" arrow>
               <span>
                 <IconButton onClick={() => setNewOpen(true)} size="large" color="primary" aria-label="新規登録">

@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { Box, Stack, Tooltip, IconButton, Typography, Dialog, DialogTitle, DialogContent, DialogActions, Button } from "@mui/material";
+import { Box, Stack, Tooltip, IconButton, Typography, Dialog, DialogTitle, DialogContent, DialogActions, Button, Tabs, Tab } from "@mui/material";
 import AddCircleOutlineIcon from "@mui/icons-material/AddCircleOutline";
 import { DataGrid, GridColDef } from "@mui/x-data-grid";
 import { Menu } from "../components/Menu";
@@ -9,17 +9,40 @@ import { EquipmentDoc, GridRow } from "../types/equipment";
 import { CsvImport } from "../components/CsvImport";
 import { EquipmentEditDialog } from "../components/EquipmentEditDialog";
 import { DeleteConfirmDialog } from "../components/DeleteConfirmDialog";
+import { EquipmentCreateDialog } from "../components/EquipmentCreateDialog";
+import { AssetCategoryImportButton } from "../components/AssetCategoryImportButton";
+import { useAssetCategoryList } from "../hooks/useAssetCategories";
 
 const EquipmentManagement: React.FC = () => {
   const [openNew, setOpenNew] = useState(false);
   const [openEdit, setOpenEdit] = useState(false);
-  const [confirmOpen, setConfirmOpen] = useState(false); // 全件置換確認
+  const [confirmOpen, setConfirmOpen] = useState(false); // CSV全件置換（カテゴリ単位）
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
 
   const { activeUsers, activeUserRaw } = useActiveUsers();
-  const { rowsRaw, gridRows, importing, progress, message, importCsv, pendingFileRef, updateOne, deleteOne, ymdToTimestamp } = useEquipments();
+  const { categories, loading } = useAssetCategoryList();
+  const { rowsRaw, gridRows, importing, progress, message, importCsvForCategory, pendingFileRef, updateOne, deleteOne, ymdToTimestamp, createOne } = useEquipments();
+
+  // ★ 選択中カテゴリ（初期は先頭）
+  const [tabIndex, setTabIndex] = useState(0);
+  const currentCategory = useMemo(() => {
+    if (!categories.length) return { code: "PC", label: "パソコン" };
+    return categories[Math.min(tabIndex, categories.length - 1)];
+  }, [categories, tabIndex]);
 
   const [selected, setSelected] = useState<{ docId: string; data: EquipmentDoc } | null>(null);
+
+  // 現在カテゴリのみ表示
+  const filteredRows = useMemo(() => gridRows.filter((r) => r.category === currentCategory.label), [gridRows, currentCategory]);
+
+  // ★ 現在の最終No.（seqOrder）から nextSeq（最終+1）を算出（カテゴリ内で計算）
+  const nextSeq = useMemo(() => {
+    const target = rowsRaw.filter((r) => r.data.category === currentCategory.label);
+    if (!target.length) return 1;
+    const nums = target.map((r) => r.data.seqOrder).filter((v): v is number => typeof v === "number" && !Number.isNaN(v));
+    if (!nums.length) return target.length + 1;
+    return Math.max(...nums) + 1;
+  }, [rowsRaw, currentCategory]);
 
   const columns: GridColDef<GridRow>[] = useMemo(
     () => [
@@ -61,7 +84,7 @@ const EquipmentManagement: React.FC = () => {
     setSelected({ ...selected, data: { ...selected.data, [key]: value } });
   };
 
-  // 保存
+  // 編集保存
   const handleSave = async () => {
     if (!selected) return;
     const payload: EquipmentDoc = {
@@ -86,15 +109,7 @@ const EquipmentManagement: React.FC = () => {
     setOpenEdit(false);
   };
 
-  // 削除
-  const handleConfirmDelete = async () => {
-    if (!selected) return;
-    await deleteOne(selected.docId);
-    setConfirmDeleteOpen(false);
-    setOpenEdit(false);
-  };
-
-  // CSV: ファイル選択 → 確認 → 実行
+  // CSV: ファイル選択 → カテゴリ内全件置換
   const handlePickCsv = (f: File) => {
     pendingFileRef.current = f;
     setConfirmOpen(true);
@@ -102,31 +117,60 @@ const EquipmentManagement: React.FC = () => {
   const handleConfirmReplace = async () => {
     const f = pendingFileRef.current;
     setConfirmOpen(false);
-    if (f) await importCsv(f, activeUserRaw);
+    if (f) await importCsvForCategory(f, activeUserRaw, currentCategory.label);
+  };
+
+  // 新規登録保存
+  const handleCreate = async (payload: EquipmentDoc) => {
+    await createOne(payload);
+    setOpenNew(false);
   };
 
   return (
     <Box sx={{ height: "100vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
       <Menu />
-      <Typography variant="h4" align="center" sx={{ borderBottom: 2, borderColor: "primary.dark", color: "primary.main", pb: 1 }}>
+
+      {/* タイトル + 右端インポートボタン */}
+      <Typography
+        variant="h4"
+        align="center"
+        sx={{
+          borderBottom: 2,
+          borderColor: "primary.dark",
+          color: "primary.main",
+          pb: 1,
+          position: "relative",
+        }}
+      >
         機器管理台帳
+        <Box sx={{ position: "absolute", right: 16, top: "50%", transform: "translateY(-50%)" }}>
+          <AssetCategoryImportButton />
+        </Box>
       </Typography>
 
-      <Box sx={{ px: 2, pt: 1 }}>
-        <Stack direction="row" spacing={2} alignItems="center">
-          <Tooltip title="新規登録" arrow>
+      {/* カテゴリタブ */}
+      <Box>
+        <Tabs value={Math.min(tabIndex, Math.max(0, categories.length - 1))} onChange={(_, v) => setTabIndex(v)} variant="scrollable" scrollButtons="auto">
+          {loading ? <Tab label="読み込み中…" /> : categories.map((c) => <Tab key={c.code} label={c.label} />)}
+        </Tabs>
+      </Box>
+
+      <Box>
+        <Stack direction="row">
+          <Tooltip title={`${currentCategory.label} を新規登録`} arrow>
             <IconButton color="primary" size="large" onClick={() => setOpenNew(true)}>
               <AddCircleOutlineIcon />
             </IconButton>
           </Tooltip>
 
+          {/* カテゴリ単位のCSV置換 */}
           <CsvImport importing={importing} progress={progress} message={message} onPick={handlePickCsv} />
         </Stack>
       </Box>
 
       <Box sx={{ flex: 1, minHeight: 0, overflow: "hidden", px: 2, pb: 2 }}>
         <DataGrid<GridRow>
-          rows={gridRows}
+          rows={filteredRows}
           columns={columns}
           autoHeight={false}
           sortModel={[]}
@@ -147,38 +191,35 @@ const EquipmentManagement: React.FC = () => {
         />
       </Box>
 
-      {/* 新規登録（プレースホルダー） */}
-      <Dialog open={openNew} onClose={() => setOpenNew(false)} fullWidth maxWidth="md">
-        <DialogTitle>機器 新規登録</DialogTitle>
-        <DialogContent dividers>
-          <Typography variant="body2" color="text.secondary">
-            新規登録フォームは次のステップで実装します。
-          </Typography>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setOpenNew(false)}>閉じる</Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* 編集ダイアログ */}
-      <EquipmentEditDialog
-        open={openEdit}
-        selected={selected}
-        onChange={handleEditChange}
-        onClose={() => setOpenEdit(false)}
-        onDeleteAsk={() => setConfirmDeleteOpen(true)}
-        onSave={handleSave}
+      {/* 新規登録ダイアログ（カテゴリ & nextSeq を渡す） */}
+      <EquipmentCreateDialog
+        open={openNew}
+        onClose={() => setOpenNew(false)}
+        onCreate={handleCreate}
         activeUsers={activeUsers}
+        nextSeq={nextSeq}
+        currentCategory={currentCategory} // ★ 追加
       />
 
-      {/* レコード削除の確認 */}
-      <DeleteConfirmDialog open={confirmDeleteOpen} onClose={() => setConfirmDeleteOpen(false)} onOk={handleConfirmDelete} />
+      {/* 編集ダイアログ */}
+      <EquipmentEditDialog open={openEdit} selected={selected} onChange={handleEditChange} onClose={() => setOpenEdit(false)} onDeleteAsk={() => setConfirmDeleteOpen(true)} onSave={handleSave} activeUsers={activeUsers} />
 
-      {/* 全件置換の確認 */}
+      {/* レコード削除の確認 */}
+      <DeleteConfirmDialog
+        open={confirmDeleteOpen}
+        onClose={() => setConfirmDeleteOpen(false)}
+        onOk={async () => {
+          /* 編集側の削除 */ await (selected && deleteOne(selected.docId));
+          setConfirmDeleteOpen(false);
+          setOpenEdit(false);
+        }}
+      />
+
+      {/* カテゴリCSV全件置換の確認 */}
       <Dialog open={confirmOpen} onClose={() => setConfirmOpen(false)}>
-        <DialogTitle>全件置換を実行しますか？</DialogTitle>
+        <DialogTitle>「{currentCategory.label}」を全件置換しますか？</DialogTitle>
         <DialogContent dividers>
-          <Typography variant="body2">equipments コレクションを全削除して CSV の内容で再作成します。取り消しはできません。</Typography>
+          <Typography variant="body2">「{currentCategory.label}」カテゴリの既存データを全削除して、選択した CSV の内容で再作成します。取り消しはできません。</Typography>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setConfirmOpen(false)}>キャンセル</Button>
