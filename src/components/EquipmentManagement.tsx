@@ -150,7 +150,27 @@ const EquipmentManagement: React.FC = () => {
 
       {/* カテゴリタブ */}
       <Box>
-        <Tabs value={Math.min(tabIndex, Math.max(0, categories.length - 1))} onChange={(_, v) => setTabIndex(v)} variant="scrollable" scrollButtons="auto">
+        <Tabs
+          value={Math.min(tabIndex, Math.max(0, categories.length - 1))}
+          onChange={(_, v) => setTabIndex(v)}
+          variant="scrollable"
+          scrollButtons={false} // ← 矢印を非表示
+          allowScrollButtonsMobile={false}
+          sx={{
+            "& .MuiTab-root": {
+              minWidth: 90,
+              fontSize: "0.9rem",
+              padding: "6px 12px",
+              minHeight: 40, // ← タブの高さも上げてバランス取り
+              fontWeight: 500, // ← 少し太めで視認性を上げる
+              textTransform: "none", // ← 全角英字や日本語に自然な表記
+            },
+            "& .MuiTabs-flexContainer": {
+              justifyContent: "flex-start", // ★ 左詰めに変更！
+              flexWrap: "nowrap", // 1行に収める
+            },
+          }}
+        >
           {loading ? <Tab label="読み込み中…" /> : categories.map((c) => <Tab key={c.code} label={c.label} />)}
         </Tabs>
       </Box>
