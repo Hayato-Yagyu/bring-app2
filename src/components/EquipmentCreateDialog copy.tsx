@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Dialog, DialogTitle, DialogContent, TextField, Button, MenuItem, Box, Stack } from "@mui/material";
 import { EquipmentDoc, STATUS_OPTIONS } from "../types/equipment";
 import { ymdToTimestamp } from "../utils/datetime";
@@ -14,9 +14,6 @@ type Props = {
   /** ★ 選択中カテゴリ（タブで選ばれたもの） */
   currentCategory: { code: string; label: string };
 };
-
-// 文字列が「未入力 or 空白のみ」ではないかを安全に判定するヘルパー
-const isNonEmpty = (v: unknown): boolean => typeof v === "string" && v.trim().length > 0;
 
 export const EquipmentCreateDialog: React.FC<Props> = ({ open, onClose, onCreate, activeUsers, nextSeq, currentCategory }) => {
   const [form, setForm] = useState<EquipmentDoc>({
@@ -68,24 +65,9 @@ export const EquipmentCreateDialog: React.FC<Props> = ({ open, onClose, onCreate
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
-  /** 必須チェック（TS2532を回避する安全な実装） */
-  const errors = useMemo(() => {
-    return {
-      acceptedDate: !form.acceptedDate, // 受付日 必須
-      deviceName: !isNonEmpty(form.deviceName), // 機器名 必須
-      owner: !isNonEmpty(form.owner), // 保有者 必須
-      status: !isNonEmpty(form.status), // 状態 必須
-      location: !isNonEmpty(form.location), // 所在地 必須
-      lastEditor: !isNonEmpty(form.lastEditor), // 最終更新者 必須
-    };
-  }, [form.acceptedDate, form.deviceName, form.owner, form.status, form.location, form.lastEditor]);
-
-  const isValid = useMemo(() => Object.values(errors).every((v) => v === false), [errors]);
-
   const handleSave = async () => {
-    if (!isValid) {
-      // 必須未入力時は保存しない（必要ならアラート）
-      // alert("必須項目を入力してください。");
+    if (!form.acceptedDate) {
+      alert("受付日を入力してください（機器番号は受付日を基準に採番します）。");
       return;
     }
 
@@ -102,13 +84,13 @@ export const EquipmentCreateDialog: React.FC<Props> = ({ open, onClose, onCreate
       confirmedOn: form.confirmedOn ?? null,
       disposedOn: form.disposedOn ?? null,
       assetNo, // 自動採番
-      branchNo: (form.branchNo ?? "").trim(),
-      deviceName: (form.deviceName ?? "").trim(),
+      branchNo: form.branchNo?.trim() ?? "",
+      deviceName: form.deviceName?.trim() ?? "",
       owner: form.owner ?? "",
       status: form.status ?? "",
       history: form.history ?? "",
       note: form.note ?? "",
-      location: (form.location ?? "").trim(),
+      location: form.location ?? "",
       lastEditor: form.lastEditor ?? "",
     };
 
@@ -123,124 +105,34 @@ export const EquipmentCreateDialog: React.FC<Props> = ({ open, onClose, onCreate
         <Box component="form" sx={{ "& .MuiTextField-root": { my: 0.25 } }}>
           <Stack direction="column" spacing={0.5}>
             <TextField label="No." variant="standard" size="small" fullWidth InputLabelProps={{ shrink: true }} InputProps={{ readOnly: true }} value={String(form.seqOrder ?? nextSeq)} />
+            <TextField label="受付日" type="date" variant="standard" size="small" fullWidth InputLabelProps={{ shrink: true }} onChange={(e) => onChange("acceptedDate", e.target.value)} />
 
-            {/* 受付日（必須） */}
-            <TextField
-              label="受付日"
-              type="date"
-              variant="standard"
-              size="small"
-              fullWidth
-              InputLabelProps={{ shrink: true }}
-              onChange={(e) => onChange("acceptedDate", e.target.value)}
-              error={errors.acceptedDate}
-              helperText={errors.acceptedDate ? "必須です" : ""}
-            />
-
-            <TextField
-              label="機器番号（保存時に自動採番）"
-              variant="standard"
-              size="small"
-              fullWidth
-              InputLabelProps={{ shrink: true }}
-              InputProps={{ readOnly: true }}
-              value={form.assetNo || ""}
-              placeholder="保存時に自動採番されます"
-            />
+            <TextField label="機器番号（保存時に自動採番）" variant="standard" size="small" fullWidth InputLabelProps={{ shrink: true }} InputProps={{ readOnly: true }} value={form.assetNo || ""} placeholder="保存時に自動採番されます" />
 
             {/* カテゴリ入力は出さない（タブで選択済み） */}
-
             <TextField label="枝番" variant="standard" size="small" fullWidth InputLabelProps={{ shrink: true }} value={form.branchNo} onChange={(e) => onChange("branchNo", e.target.value)} />
-
-            {/* 機器名（必須） */}
-            <TextField
-              label="機器名"
-              variant="standard"
-              size="small"
-              fullWidth
-              InputLabelProps={{ shrink: true }}
-              value={form.deviceName ?? ""}
-              onChange={(e) => onChange("deviceName", e.target.value)}
-              error={errors.deviceName}
-              helperText={errors.deviceName ? "必須です" : ""}
-            />
-
+            <TextField label="機器名" variant="standard" size="small" fullWidth InputLabelProps={{ shrink: true }} value={form.deviceName} onChange={(e) => onChange("deviceName", e.target.value)} />
             <TextField label="更新日" type="date" variant="standard" size="small" fullWidth InputLabelProps={{ shrink: true }} onChange={(e) => onChange("updatedOn", e.target.value)} />
-
             <TextField label="確認日" type="date" variant="standard" size="small" fullWidth InputLabelProps={{ shrink: true }} onChange={(e) => onChange("confirmedOn", e.target.value)} />
-
             <TextField label="廃棄日" type="date" variant="standard" size="small" fullWidth InputLabelProps={{ shrink: true }} onChange={(e) => onChange("disposedOn", e.target.value)} />
-
-            {/* 保有者（必須） */}
-            <TextField
-              label="保有者"
-              select
-              variant="standard"
-              size="small"
-              fullWidth
-              InputLabelProps={{ shrink: true }}
-              value={form.owner ?? ""}
-              onChange={(e) => onChange("owner", e.target.value)}
-              error={errors.owner}
-              helperText={errors.owner ? "必須です" : ""}
-            >
+            <TextField label="保有者" select variant="standard" size="small" fullWidth InputLabelProps={{ shrink: true }} value={form.owner} onChange={(e) => onChange("owner", e.target.value)}>
               {activeUsers.map((u) => (
                 <MenuItem key={u.key} value={u.key}>
                   {u.label}
                 </MenuItem>
               ))}
             </TextField>
-
-            {/* 状態（必須） */}
-            <TextField
-              label="状態"
-              select
-              variant="standard"
-              size="small"
-              fullWidth
-              InputLabelProps={{ shrink: true }}
-              value={form.status ?? ""}
-              onChange={(e) => onChange("status", e.target.value)}
-              error={errors.status}
-              helperText={errors.status ? "必須です" : ""}
-            >
+            <TextField label="状態" select variant="standard" size="small" fullWidth InputLabelProps={{ shrink: true }} value={form.status} onChange={(e) => onChange("status", e.target.value)}>
               {STATUS_OPTIONS.map((opt) => (
                 <MenuItem key={opt} value={opt}>
                   {opt}
                 </MenuItem>
               ))}
             </TextField>
-
-            <TextField label="保有履歴" variant="standard" size="small" fullWidth InputLabelProps={{ shrink: true }} value={form.history ?? ""} onChange={(e) => onChange("history", e.target.value)} />
-
-            <TextField label="備考" variant="standard" size="small" fullWidth InputLabelProps={{ shrink: true }} value={form.note ?? ""} onChange={(e) => onChange("note", e.target.value)} />
-
-            {/* 所在地（必須） */}
-            <TextField
-              label="所在地"
-              variant="standard"
-              size="small"
-              fullWidth
-              InputLabelProps={{ shrink: true }}
-              value={form.location ?? ""}
-              onChange={(e) => onChange("location", e.target.value)}
-              error={errors.location}
-              helperText={errors.location ? "必須です" : ""}
-            />
-
-            {/* 最終更新者（必須） */}
-            <TextField
-              label="最終更新者"
-              select
-              variant="standard"
-              size="small"
-              fullWidth
-              InputLabelProps={{ shrink: true }}
-              value={form.lastEditor ?? ""}
-              onChange={(e) => onChange("lastEditor", e.target.value)}
-              error={errors.lastEditor}
-              helperText={errors.lastEditor ? "必須です" : ""}
-            >
+            <TextField label="保有履歴" variant="standard" size="small" fullWidth InputLabelProps={{ shrink: true }} value={form.history} onChange={(e) => onChange("history", e.target.value)} />
+            <TextField label="備考" variant="standard" size="small" fullWidth InputLabelProps={{ shrink: true }} value={form.note} onChange={(e) => onChange("note", e.target.value)} />
+            <TextField label="所在地" variant="standard" size="small" fullWidth InputLabelProps={{ shrink: true }} value={form.location} onChange={(e) => onChange("location", e.target.value)} />
+            <TextField label="最終更新者" select variant="standard" size="small" fullWidth InputLabelProps={{ shrink: true }} value={form.lastEditor} onChange={(e) => onChange("lastEditor", e.target.value)}>
               {activeUsers.map((u) => (
                 <MenuItem key={`${u.key}-editor`} value={u.key}>
                   {u.label}
@@ -252,13 +144,7 @@ export const EquipmentCreateDialog: React.FC<Props> = ({ open, onClose, onCreate
               <Button onClick={onClose} variant="outlined" size="small" sx={{ flex: 1 }}>
                 閉じる
               </Button>
-              <Button
-                onClick={handleSave}
-                variant="contained"
-                size="small"
-                sx={{ flex: 1 }}
-                disabled={!isValid} // ★ 必須満たすまで保存不可
-              >
+              <Button onClick={handleSave} variant="contained" size="small" sx={{ flex: 1 }}>
                 保存
               </Button>
             </Box>

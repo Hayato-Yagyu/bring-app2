@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { Box, Stack, Tooltip, IconButton, Typography, Dialog, DialogTitle, DialogContent, DialogActions, Button, Tabs, Tab } from "@mui/material";
 import AddCircleOutlineIcon from "@mui/icons-material/AddCircleOutline";
+import HistoryEduIcon from "@mui/icons-material/HistoryEdu";
 import { DataGrid, GridColDef } from "@mui/x-data-grid";
 import { Menu } from "../components/Menu";
 import { useEquipments } from "../hooks/useEquipments";
@@ -12,18 +13,26 @@ import { DeleteConfirmDialog } from "../components/DeleteConfirmDialog";
 import { EquipmentCreateDialog } from "../components/EquipmentCreateDialog";
 import { AssetCategoryImportButton } from "../components/AssetCategoryImportButton";
 import { useAssetCategoryList } from "../hooks/useAssetCategories";
+import { useRevisionHistory } from "../hooks/useRevisionHistory";
+import { RevisionHistoryListDialog } from "../components/RevisionHistoryListDialog";
+import { auth } from "../firebase"; // ★ 追加
 
 const EquipmentManagement: React.FC = () => {
+  // ----------------------------------------------------------------
+  // 機器管理
+  // ----------------------------------------------------------------
   const [openNew, setOpenNew] = useState(false);
   const [openEdit, setOpenEdit] = useState(false);
-  const [confirmOpen, setConfirmOpen] = useState(false); // CSV全件置換（カテゴリ単位）
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
 
   const { activeUsers, activeUserRaw } = useActiveUsers();
   const { categories, loading } = useAssetCategoryList();
   const { rowsRaw, gridRows, importing, progress, message, importCsvForCategory, pendingFileRef, updateOne, deleteOne, ymdToTimestamp, createOne } = useEquipments();
 
-  // ★ 選択中カテゴリ（初期は先頭）
+  // ログイン中ユーザーUID（string | undefined）
+  const currentUid = auth.currentUser?.uid;
+
   const [tabIndex, setTabIndex] = useState(0);
   const currentCategory = useMemo(() => {
     if (!categories.length) return { code: "PC", label: "パソコン" };
@@ -32,10 +41,8 @@ const EquipmentManagement: React.FC = () => {
 
   const [selected, setSelected] = useState<{ docId: string; data: EquipmentDoc } | null>(null);
 
-  // 現在カテゴリのみ表示
   const filteredRows = useMemo(() => gridRows.filter((r) => r.category === currentCategory.label), [gridRows, currentCategory]);
 
-  // ★ 現在の最終No.（seqOrder）から nextSeq（最終+1）を算出（カテゴリ内で計算）
   const nextSeq = useMemo(() => {
     const target = rowsRaw.filter((r) => r.data.category === currentCategory.label);
     if (!target.length) return 1;
@@ -46,26 +53,25 @@ const EquipmentManagement: React.FC = () => {
 
   const columns: GridColDef<GridRow>[] = useMemo(
     () => [
-      { field: "seq", headerName: "No.", flex: 0.4, sortable: false },
-      { field: "acceptedDate", headerName: "受付日", flex: 0.7, sortable: false },
-      { field: "assetNo", headerName: "機器番号", flex: 1.0, sortable: false },
-      { field: "category", headerName: "機器分類", flex: 0.7, sortable: false },
-      { field: "branchNo", headerName: "枝番", flex: 0.6, sortable: false },
-      { field: "deviceName", headerName: "機器名", flex: 1.1, sortable: false },
-      { field: "updatedOn", headerName: "更新日", flex: 0.8, sortable: false },
-      { field: "confirmedOn", headerName: "確認日", flex: 0.8, sortable: false },
-      { field: "disposedOn", headerName: "廃棄日", flex: 0.8, sortable: false },
-      { field: "owner", headerName: "保有者", flex: 0.8, sortable: false },
-      { field: "status", headerName: "状態", flex: 0.8, sortable: false },
-      { field: "history", headerName: "保有履歴", flex: 1.2, sortable: false },
-      { field: "note", headerName: "備考", flex: 1.2, sortable: false },
-      { field: "location", headerName: "所在地", flex: 0.9, sortable: false },
-      { field: "lastEditor", headerName: "最終更新者", flex: 0.8, sortable: false },
+      { field: "seq", headerName: "No.", flex: 0.4 },
+      { field: "acceptedDate", headerName: "受付日", flex: 0.7 },
+      { field: "assetNo", headerName: "機器番号", flex: 1.0 },
+      { field: "category", headerName: "機器分類", flex: 0.7 },
+      { field: "branchNo", headerName: "枝番", flex: 0.6 },
+      { field: "deviceName", headerName: "機器名", flex: 1.1 },
+      { field: "updatedOn", headerName: "更新日", flex: 0.8 },
+      { field: "confirmedOn", headerName: "確認日", flex: 0.8 },
+      { field: "disposedOn", headerName: "廃棄日", flex: 0.8 },
+      { field: "owner", headerName: "保有者", flex: 0.8 },
+      { field: "status", headerName: "状態", flex: 0.8 },
+      { field: "history", headerName: "保有履歴", flex: 1.2 },
+      { field: "note", headerName: "備考", flex: 1.2 },
+      { field: "location", headerName: "所在地", flex: 0.9 },
+      { field: "lastEditor", headerName: "最終更新者", flex: 0.8 },
     ],
     []
   );
 
-  // 行クリック → 編集
   const handleRowClick = (params: any) => {
     const hit = rowsRaw.find((r) => r.docId === params.id);
     if (!hit) return;
@@ -73,18 +79,19 @@ const EquipmentManagement: React.FC = () => {
     setOpenEdit(true);
   };
 
-  // 編集ダイアログの値変更
   const handleEditChange = (key: keyof EquipmentDoc, value: string) => {
     if (!selected) return;
     if (key === "seqOrder") return;
     if (key === "acceptedDate" || key === "updatedOn" || key === "confirmedOn" || key === "disposedOn") {
-      setSelected({ ...selected, data: { ...selected.data, [key]: ymdToTimestamp(value) } });
+      setSelected({
+        ...selected,
+        data: { ...selected.data, [key]: ymdToTimestamp(value) },
+      });
       return;
     }
     setSelected({ ...selected, data: { ...selected.data, [key]: value } });
   };
 
-  // 編集保存
   const handleSave = async () => {
     if (!selected) return;
     const payload: EquipmentDoc = {
@@ -109,28 +116,37 @@ const EquipmentManagement: React.FC = () => {
     setOpenEdit(false);
   };
 
-  // CSV: ファイル選択 → カテゴリ内全件置換
+  // CSVファイル読込確認
   const handlePickCsv = (f: File) => {
     pendingFileRef.current = f;
     setConfirmOpen(true);
   };
+
   const handleConfirmReplace = async () => {
     const f = pendingFileRef.current;
     setConfirmOpen(false);
     if (f) await importCsvForCategory(f, activeUserRaw, currentCategory.label);
   };
 
-  // 新規登録保存
   const handleCreate = async (payload: EquipmentDoc) => {
     await createOne(payload);
     setOpenNew(false);
   };
 
+  // ----------------------------------------------------------------
+  // ★ 改訂履歴機能
+  // ----------------------------------------------------------------
+  const [openRevisionList, setOpenRevisionList] = useState(false);
+  const { rowsForGrid: revisionRows, loading: revisionLoading, create, update, remove } = useRevisionHistory();
+
+  // ----------------------------------------------------------------
+  // レンダリング
+  // ----------------------------------------------------------------
   return (
     <Box sx={{ height: "100vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
       <Menu />
 
-      {/* タイトル + 右端インポートボタン */}
+      {/* タイトル + 右上ボタン */}
       <Typography
         variant="h4"
         align="center"
@@ -143,8 +159,23 @@ const EquipmentManagement: React.FC = () => {
         }}
       >
         機器管理台帳
-        <Box sx={{ position: "absolute", right: 16, top: "50%", transform: "translateY(-50%)" }}>
+        <Box
+          sx={{
+            position: "absolute",
+            right: 16,
+            top: "50%",
+            transform: "translateY(-50%)",
+            display: "flex",
+            gap: 1.5,
+            alignItems: "center",
+          }}
+        >
           <AssetCategoryImportButton />
+          <Tooltip title="改訂履歴の一覧・追加・編集" arrow>
+            <IconButton color="primary" onClick={() => setOpenRevisionList(true)}>
+              <HistoryEduIcon />
+            </IconButton>
+          </Tooltip>
         </Box>
       </Typography>
 
@@ -154,20 +185,20 @@ const EquipmentManagement: React.FC = () => {
           value={Math.min(tabIndex, Math.max(0, categories.length - 1))}
           onChange={(_, v) => setTabIndex(v)}
           variant="scrollable"
-          scrollButtons={false} // ← 矢印を非表示
+          scrollButtons={false}
           allowScrollButtonsMobile={false}
           sx={{
             "& .MuiTab-root": {
               minWidth: 90,
               fontSize: "0.9rem",
               padding: "6px 12px",
-              minHeight: 40, // ← タブの高さも上げてバランス取り
-              fontWeight: 500, // ← 少し太めで視認性を上げる
-              textTransform: "none", // ← 全角英字や日本語に自然な表記
+              minHeight: 40,
+              fontWeight: 500,
+              textTransform: "none",
             },
             "& .MuiTabs-flexContainer": {
-              justifyContent: "flex-start", // ★ 左詰めに変更！
-              flexWrap: "nowrap", // 1行に収める
+              justifyContent: "flex-start",
+              flexWrap: "nowrap",
             },
           }}
         >
@@ -183,7 +214,7 @@ const EquipmentManagement: React.FC = () => {
             </IconButton>
           </Tooltip>
 
-          {/* カテゴリ単位のCSV置換 */}
+          {/* CSV置換 */}
           <CsvImport importing={importing} progress={progress} message={message} onPick={handlePickCsv} />
         </Stack>
       </Box>
@@ -193,7 +224,6 @@ const EquipmentManagement: React.FC = () => {
           rows={filteredRows}
           columns={columns}
           autoHeight={false}
-          sortModel={[]}
           disableColumnMenu
           disableColumnSelector
           disableDensitySelector
@@ -211,35 +241,33 @@ const EquipmentManagement: React.FC = () => {
         />
       </Box>
 
-      {/* 新規登録ダイアログ（カテゴリ & nextSeq を渡す） */}
-      <EquipmentCreateDialog
-        open={openNew}
-        onClose={() => setOpenNew(false)}
-        onCreate={handleCreate}
+      {/* 各種ダイアログ */}
+      <EquipmentCreateDialog open={openNew} onClose={() => setOpenNew(false)} onCreate={handleCreate} activeUsers={activeUsers} nextSeq={nextSeq} currentCategory={currentCategory} />
+
+      <EquipmentEditDialog
+        open={openEdit}
+        selected={selected}
+        onChange={handleEditChange}
+        onClose={() => setOpenEdit(false)}
+        onDeleteAsk={() => setConfirmDeleteOpen(true)}
+        onSave={handleSave}
         activeUsers={activeUsers}
-        nextSeq={nextSeq}
-        currentCategory={currentCategory} // ★ 追加
       />
 
-      {/* 編集ダイアログ */}
-      <EquipmentEditDialog open={openEdit} selected={selected} onChange={handleEditChange} onClose={() => setOpenEdit(false)} onDeleteAsk={() => setConfirmDeleteOpen(true)} onSave={handleSave} activeUsers={activeUsers} />
-
-      {/* レコード削除の確認 */}
       <DeleteConfirmDialog
         open={confirmDeleteOpen}
         onClose={() => setConfirmDeleteOpen(false)}
         onOk={async () => {
-          /* 編集側の削除 */ await (selected && deleteOne(selected.docId));
+          if (selected) await deleteOne(selected.docId);
           setConfirmDeleteOpen(false);
           setOpenEdit(false);
         }}
       />
 
-      {/* カテゴリCSV全件置換の確認 */}
       <Dialog open={confirmOpen} onClose={() => setConfirmOpen(false)}>
         <DialogTitle>「{currentCategory.label}」を全件置換しますか？</DialogTitle>
         <DialogContent dividers>
-          <Typography variant="body2">「{currentCategory.label}」カテゴリの既存データを全削除して、選択した CSV の内容で再作成します。取り消しはできません。</Typography>
+          <Typography variant="body2">「{currentCategory.label}」カテゴリの既存データを全削除して、選択した CSV の内容で再作成します。 取り消しはできません。</Typography>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setConfirmOpen(false)}>キャンセル</Button>
@@ -248,6 +276,38 @@ const EquipmentManagement: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* 改訂履歴ダイアログ */}
+      <RevisionHistoryListDialog
+        open={openRevisionList}
+        onClose={() => setOpenRevisionList(false)}
+        rows={revisionRows}
+        loading={revisionLoading}
+        authors={activeUsers}
+        onCreate={async (v) =>
+          await create({
+            no: v.no,
+            content: v.content,
+            createdAtYmd: v.createdAtYmd,
+            author: v.author,
+            createdBy: currentUid ?? undefined, // null → undefined
+          })
+        }
+        onUpdate={async (id, v) =>
+          await update(id, {
+            no: v.no,
+            content: v.content,
+            createdAtYmd: v.createdAtYmd,
+            author: v.author,
+            updatedBy: currentUid ?? undefined, // null → undefined
+          })
+        }
+        onDelete={async (id) => {
+          if (window.confirm("この改訂履歴を削除します。よろしいですか？")) {
+            await remove(id);
+          }
+        }}
+      />
     </Box>
   );
 };
