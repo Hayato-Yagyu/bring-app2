@@ -15,7 +15,9 @@ import { AssetCategoryImportButton } from "../components/AssetCategoryImportButt
 import { useAssetCategoryList } from "../hooks/useAssetCategories";
 import { useRevisionHistory } from "../hooks/useRevisionHistory";
 import { RevisionHistoryListDialog } from "../components/RevisionHistoryListDialog";
+import { ServerRoomDiagramDialog } from "../components/ServerRoomDiagramDialog";
 import { auth } from "../firebase"; // ★ 追加
+import LanIcon from "@mui/icons-material/Lan"; // 好きなアイコンでOK
 
 const EquipmentManagement: React.FC = () => {
   // ----------------------------------------------------------------
@@ -25,6 +27,7 @@ const EquipmentManagement: React.FC = () => {
   const [openEdit, setOpenEdit] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [openServerRoom, setOpenServerRoom] = useState(false);
 
   const { activeUsers, activeUserRaw } = useActiveUsers();
   const { categories, loading } = useAssetCategoryList();
@@ -171,6 +174,12 @@ const EquipmentManagement: React.FC = () => {
           }}
         >
           <AssetCategoryImportButton />
+          {/* ★ サーバ室構成編集ボタン */}
+          <Tooltip title="サーバ室構成を編集" arrow>
+            <IconButton color="primary" size="large" onClick={() => setOpenServerRoom(true)}>
+              <LanIcon />
+            </IconButton>
+          </Tooltip>
           <Tooltip title="改訂履歴の一覧・追加・編集" arrow>
             <IconButton color="primary" onClick={() => setOpenRevisionList(true)}>
               <HistoryEduIcon />
@@ -276,6 +285,14 @@ const EquipmentManagement: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      <ServerRoomDiagramDialog
+        open={openServerRoom}
+        onClose={() => setOpenServerRoom(false)}
+        // 機器候補としてサーバカテゴリを渡す（必要なら label で判定を調整）
+        equipments={rowsRaw.filter((r) => r.data.category === "サーバー").map((r) => ({ id: r.docId, label: `${r.data.deviceName || r.data.assetNo || r.docId}`, raw: r }))}
+        currentUid={currentUid}
+      />
 
       {/* 改訂履歴ダイアログ */}
       <RevisionHistoryListDialog
