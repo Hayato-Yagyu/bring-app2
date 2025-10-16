@@ -1,3 +1,4 @@
+// src/pages/EquipmentManagement.tsx
 import React, { useMemo, useState } from "react";
 import { Box, Stack, Tooltip, IconButton, Typography, Dialog, DialogTitle, DialogContent, DialogActions, Button, Tabs, Tab } from "@mui/material";
 import AddCircleOutlineIcon from "@mui/icons-material/AddCircleOutline";
@@ -16,8 +17,8 @@ import { useAssetCategoryList } from "../hooks/useAssetCategories";
 import { useRevisionHistory } from "../hooks/useRevisionHistory";
 import { RevisionHistoryListDialog } from "../components/RevisionHistoryListDialog";
 import { ServerRoomDiagramDialog } from "../components/ServerRoomDiagramDialog";
-import { auth } from "../firebase"; // ★ 追加
-import LanIcon from "@mui/icons-material/Lan"; // 好きなアイコンでOK
+import { auth } from "../firebase";
+import LanIcon from "@mui/icons-material/Lan";
 
 const EquipmentManagement: React.FC = () => {
   // ----------------------------------------------------------------
@@ -54,8 +55,9 @@ const EquipmentManagement: React.FC = () => {
     return Math.max(...nums) + 1;
   }, [rowsRaw, currentCategory]);
 
-  const columns: GridColDef<GridRow>[] = useMemo(
-    () => [
+  // ===== 列定義（カテゴリに応じて出し分け） =====
+  const columns: GridColDef<GridRow>[] = useMemo(() => {
+    const base: GridColDef<GridRow>[] = [
       { field: "seq", headerName: "No.", flex: 0.4 },
       { field: "acceptedDate", headerName: "受付日", flex: 0.7 },
       { field: "assetNo", headerName: "機器番号", flex: 1.0 },
@@ -71,9 +73,34 @@ const EquipmentManagement: React.FC = () => {
       { field: "note", headerName: "備考", flex: 1.2 },
       { field: "location", headerName: "所在地", flex: 0.9 },
       { field: "lastEditor", headerName: "最終更新者", flex: 0.8 },
-    ],
-    []
-  );
+    ];
+
+    if (currentCategory.label === "USBハブ") {
+      const usbCols: GridColDef<GridRow>[] = [
+        { field: "seq", headerName: "No.", flex: 0.4 },
+        { field: "acceptedDate", headerName: "受付日", flex: 0.8 },
+        { field: "assetNo", headerName: "機器番号", flex: 1.0 },
+        { field: "category", headerName: "機器分類", flex: 0.7 },
+        { field: "branchNo", headerName: "枝番", flex: 0.6 },
+        { field: "deviceName", headerName: "機器名", flex: 1.1 },
+        { field: "updatedOn", headerName: "更新日", flex: 0.8 },
+        { field: "confirmedOn", headerName: "確認日", flex: 0.8 },
+        { field: "disposedOn", headerName: "廃棄日", flex: 0.8 },
+        { field: "owner", headerName: "保有者", flex: 0.8 },
+        { field: "status", headerName: "状態", flex: 0.8 },
+        { field: "history", headerName: "保有履歴", flex: 1.2 },
+        { field: "note", headerName: "備考", flex: 1.0 },
+        { field: "location", headerName: "所在地", flex: 0.9 },
+        { field: "hdmi", headerName: "HDMI", flex: 0.6 },
+        { field: "usbA", headerName: "USB A", flex: 0.6 },
+        { field: "usbC", headerName: "USB C", flex: 0.6 },
+        { field: "lan", headerName: "LAN", flex: 0.6 },
+        { field: "lastEditor", headerName: "最終\n更新者", flex: 0.8 },
+      ];
+      return usbCols;
+    }
+    return base;
+  }, [currentCategory.label]);
 
   const handleRowClick = (params: any) => {
     const hit = rowsRaw.find((r) => r.docId === params.id);
@@ -113,6 +140,11 @@ const EquipmentManagement: React.FC = () => {
       note: selected.data.note ?? "",
       location: selected.data.location ?? "",
       lastEditor: selected.data.lastEditor ?? "",
+      // ★ 追加項目も保持（空なら空文字でOK）
+      hdmi: selected.data.hdmi ?? "",
+      usbA: selected.data.usbA ?? "",
+      usbC: selected.data.usbC ?? "",
+      lan: selected.data.lan ?? "",
       seqOrder: selected.data.seqOrder ?? null,
     };
     await updateOne(selected.docId, payload);
@@ -246,6 +278,8 @@ const EquipmentManagement: React.FC = () => {
             border: "1px solid #ddd",
             "& .MuiDataGrid-columnHeaders": { backgroundColor: "#f9f9f9" },
             "& .MuiDataGrid-virtualScroller": { overflowX: "hidden !important" },
+            // ★ 改行ヘッダ（受付日、最終\n更新者）を見やすく
+            "& .MuiDataGrid-columnHeaderTitle": { whiteSpace: "pre-line", lineHeight: 1.1 },
           }}
         />
       </Box>
@@ -286,11 +320,25 @@ const EquipmentManagement: React.FC = () => {
         </DialogActions>
       </Dialog>
 
+      {/* サーバ室ダイアログへは全カテゴリ（少なくともサーバー＋ルーター）を渡す */}
       <ServerRoomDiagramDialog
         open={openServerRoom}
         onClose={() => setOpenServerRoom(false)}
-        // 機器候補としてサーバカテゴリを渡す（必要なら label で判定を調整）
-        equipments={rowsRaw.filter((r) => r.data.category === "サーバー").map((r) => ({ id: r.docId, label: `${r.data.deviceName || r.data.assetNo || r.docId}`, raw: r }))}
+        equipments={rowsRaw
+          .slice()
+          .sort((a, b) => {
+            const sa = Number(a.data.seqOrder ?? Number.MAX_SAFE_INTEGER);
+            const sb = Number(b.data.seqOrder ?? Number.MAX_SAFE_INTEGER);
+            return sa - sb;
+          })
+          .map((r) => {
+            const asset = (r.data.assetNo ?? "").trim();
+            return {
+              id: r.docId,
+              label: asset && asset !== "-" ? asset : r.docId,
+              raw: r.data,
+            };
+          })}
         currentUid={currentUid}
       />
 

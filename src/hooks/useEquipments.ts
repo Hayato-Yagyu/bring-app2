@@ -1,19 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  collection,
-  onSnapshot,
-  orderBy,
-  query,
-  setDoc,
-  doc,
-  getDocs,
-  writeBatch,
-  updateDoc,
-  deleteDoc,
-  addDoc,
-  serverTimestamp,
-  where, // ★ 追加
-} from "firebase/firestore";
+import { collection, onSnapshot, orderBy, query, setDoc, doc, getDocs, writeBatch, updateDoc, deleteDoc, addDoc, serverTimestamp, where } from "firebase/firestore";
 import { db } from "../firebase";
 import * as Papa from "papaparse";
 import { EquipmentDoc, GridRow } from "../types/equipment";
@@ -61,6 +47,11 @@ export const useEquipments = () => {
           note: data.note ?? "",
           location: data.location ?? "",
           lastEditor: data.lastEditor ?? "",
+          // ★ USBハブ用
+          hdmi: data.hdmi ?? "",
+          usbA: data.usbA ?? "",
+          usbC: data.usbC ?? "",
+          lan: data.lan ?? "",
         };
       }),
     [rowsRaw]
@@ -103,7 +94,7 @@ export const useEquipments = () => {
   };
 
   // --- CSV インポート（従来：全体置換） ---
-
+  // ※ 混在CSVに対応：各行のカテゴリを見て USBハブ なら拡張列として解釈
   const importCsv = async (file: File, activeUserRaw: UserDoc[]) => {
     setImporting(true);
     setProgress(0);
@@ -128,7 +119,8 @@ export const useEquipments = () => {
       setMessage("既存データを全削除中…");
       await deleteAllEquipments();
 
-      const IDX = {
+      // 既定のインデックス
+      const IDX_BASE = {
         no: 0,
         acceptedDate: 1,
         assetNo: 2,
@@ -146,9 +138,22 @@ export const useEquipments = () => {
         lastEditor: 14,
       } as const;
 
+      // USBハブ拡張（HDMI/USB A/USB C/LAN/最終更新者）
+      const IDX_USB = {
+        ...IDX_BASE,
+        lastEditor: 18,
+        hdmi: 14,
+        usbA: 15,
+        usbC: 16,
+        lan: 17,
+      } as const;
+
       const toWrite: Array<{ data: Partial<EquipmentDoc> }> = [];
       rows.forEach((cols, i) => {
         const c = (k: number) => clean(cols[k] ?? "");
+        const isUsb = (c(IDX_BASE.category) || "") === "USBハブ" && cols.length >= 19;
+        const IDX = isUsb ? (IDX_USB as any) : (IDX_BASE as any);
+
         const seqFromCsv = toInt(c(IDX.no));
         const data: Partial<EquipmentDoc> = {
           seqOrder: seqFromCsv ?? i + 1,
@@ -166,6 +171,15 @@ export const useEquipments = () => {
           note: toStrBlank(c(IDX.note)),
           location: toStrBlank(c(IDX.location)),
           lastEditor: resolvePerson(c(IDX.lastEditor)),
+          // ★ USB行のみ追加列を取り込む
+          ...(isUsb
+            ? {
+                hdmi: toStrBlank(c(IDX.hdmi)),
+                usbA: toStrBlank(c(IDX.usbA)),
+                usbC: toStrBlank(c(IDX.usbC)),
+                lan: toStrBlank(c(IDX.lan)),
+              }
+            : {}),
         };
         if (hasMeaningfulValue(data)) toWrite.push({ data });
       });
@@ -187,7 +201,6 @@ export const useEquipments = () => {
   };
 
   // --- CSV インポート（★カテゴリ単位の全件置換） ---
-
   const importCsvForCategory = async (file: File, activeUserRaw: UserDoc[], categoryLabel: string) => {
     setImporting(true);
     setProgress(0);
@@ -212,11 +225,12 @@ export const useEquipments = () => {
       setMessage(`カテゴリ「${categoryLabel}」の既存データを削除中…`);
       await deleteEquipmentsByCategory(categoryLabel);
 
-      const IDX = {
+      // 既定のインデックス
+      const IDX_BASE = {
         no: 0,
         acceptedDate: 1,
         assetNo: 2,
-        category: 3, // CSVに列があっても無視し、下で上書きする
+        category: 3, // CSVに列があっても無視し、下で上書き
         branchNo: 4,
         deviceName: 5,
         updatedOn: 6,
@@ -230,9 +244,22 @@ export const useEquipments = () => {
         lastEditor: 14,
       } as const;
 
+      // USBハブのヘッダ追加版
+      const IDX_USB = {
+        ...IDX_BASE,
+        lastEditor: 18,
+        hdmi: 14,
+        usbA: 15,
+        usbC: 16,
+        lan: 17,
+      } as const;
+
+      const useUsb = categoryLabel === "USBハブ";
       const toWrite: Array<{ data: Partial<EquipmentDoc> }> = [];
       rows.forEach((cols, i) => {
         const c = (k: number) => clean(cols[k] ?? "");
+        const IDX = useUsb && cols.length >= 19 ? (IDX_USB as any) : (IDX_BASE as any);
+
         const seqFromCsv = toInt(c(IDX.no));
         const data: Partial<EquipmentDoc> = {
           seqOrder: seqFromCsv ?? i + 1,
@@ -250,6 +277,14 @@ export const useEquipments = () => {
           note: toStrBlank(c(IDX.note)),
           location: toStrBlank(c(IDX.location)),
           lastEditor: resolvePerson(c(IDX.lastEditor)),
+          ...(useUsb && cols.length >= 19
+            ? {
+                hdmi: toStrBlank(c(IDX.hdmi)),
+                usbA: toStrBlank(c(IDX.usbA)),
+                usbC: toStrBlank(c(IDX.usbC)),
+                lan: toStrBlank(c(IDX.lan)),
+              }
+            : {}),
         };
         if (hasMeaningfulValue(data as Record<string, any>)) toWrite.push({ data });
       });
@@ -304,8 +339,8 @@ export const useEquipments = () => {
     message,
     setMessage,
     // CSV
-    importCsv, // 従来：全体置換
-    importCsvForCategory, // ★ 追加：カテゴリ単位置換
+    importCsv, // 従来：全体置換（USB混在にも対応）
+    importCsvForCategory, // ★ 追加：カテゴリ単位置換（USBハブ列にも対応）
     pendingFileRef,
     setImporting,
     setProgress,

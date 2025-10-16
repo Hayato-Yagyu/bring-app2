@@ -14,6 +14,8 @@ type Props = {
 };
 
 export const EquipmentEditDialog: React.FC<Props> = ({ open, selected, onChange, onClose, onDeleteAsk, onSave, activeUsers }) => {
+  const isUsbHub = selected?.data?.category === "USBハブ";
+
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
       <DialogTitle>機器情報 編集</DialogTitle>
@@ -196,6 +198,16 @@ export const EquipmentEditDialog: React.FC<Props> = ({ open, selected, onChange,
                   </MenuItem>
                 ))}
               </TextField>
+
+              {/* ★ USBハブ専用フィールド */}
+              {isUsbHub && (
+                <Stack direction="row" spacing={2} sx={{ mt: 0.5 }}>
+                  <TextField label="HDMI" variant="standard" size="small" value={selected.data.hdmi ?? ""} onChange={(e) => onChange("hdmi", e.target.value)} />
+                  <TextField label="USB A" variant="standard" size="small" value={selected.data.usbA ?? ""} onChange={(e) => onChange("usbA", e.target.value)} />
+                  <TextField label="USB C" variant="standard" size="small" value={selected.data.usbC ?? ""} onChange={(e) => onChange("usbC", e.target.value)} />
+                  <TextField label="LAN" variant="standard" size="small" value={selected.data.lan ?? ""} onChange={(e) => onChange("lan", e.target.value)} />
+                </Stack>
+              )}
 
               <Box sx={{ display: "flex", gap: 1, pt: 0.5 }}>
                 <Button onClick={onDeleteAsk} color="error" variant="outlined" size="small" sx={{ flex: 1 }}>

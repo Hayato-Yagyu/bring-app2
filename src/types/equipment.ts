@@ -19,6 +19,12 @@ export type EquipmentDoc = {
   location?: string | null;
   lastEditor?: string | null;
 
+  // ★ 追加：USBハブ用の拡張項目
+  hdmi?: string | null;
+  usbA?: string | null;
+  usbC?: string | null;
+  lan?: string | null;
+
   seqOrder?: number | null; // No.
 };
 
@@ -39,6 +45,12 @@ export type GridRow = {
   note: string;
   location: string;
   lastEditor: string;
+
+  // ★ 追加：一覧にも表示
+  hdmi?: string;
+  usbA?: string;
+  usbC?: string;
+  lan?: string;
 };
 
 export const STATUS_OPTIONS = ["未使用", "使用中", "廃棄", "所在不明"] as const;

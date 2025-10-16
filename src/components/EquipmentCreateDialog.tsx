@@ -34,6 +34,11 @@ export const EquipmentCreateDialog: React.FC<Props> = ({ open, onClose, onCreate
     note: "",
     location: "",
     lastEditor: "",
+    // ★ USBハブ用
+    hdmi: "",
+    usbA: "",
+    usbC: "",
+    lan: "",
     seqOrder: null,
   });
 
@@ -54,6 +59,11 @@ export const EquipmentCreateDialog: React.FC<Props> = ({ open, onClose, onCreate
         note: "",
         location: "",
         lastEditor: "",
+        // USBハブ初期値
+        hdmi: "",
+        usbA: "",
+        usbC: "",
+        lan: "",
         seqOrder: nextSeq,
       });
     }
@@ -68,7 +78,7 @@ export const EquipmentCreateDialog: React.FC<Props> = ({ open, onClose, onCreate
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
-  /** 必須チェック（TS2532を回避する安全な実装） */
+  /** 必須チェック */
   const errors = useMemo(() => {
     return {
       acceptedDate: !form.acceptedDate, // 受付日 必須
@@ -83,11 +93,7 @@ export const EquipmentCreateDialog: React.FC<Props> = ({ open, onClose, onCreate
   const isValid = useMemo(() => Object.values(errors).every((v) => v === false), [errors]);
 
   const handleSave = async () => {
-    if (!isValid) {
-      // 必須未入力時は保存しない（必要ならアラート）
-      // alert("必須項目を入力してください。");
-      return;
-    }
+    if (!isValid) return;
 
     // ★ タブで選択されたカテゴリcodeで採番
     const registeredAt = (form.acceptedDate as Timestamp).toDate();
@@ -110,11 +116,18 @@ export const EquipmentCreateDialog: React.FC<Props> = ({ open, onClose, onCreate
       note: form.note ?? "",
       location: (form.location ?? "").trim(),
       lastEditor: form.lastEditor ?? "",
+      // ★ USBハブ用
+      hdmi: form.hdmi ?? "",
+      usbA: form.usbA ?? "",
+      usbC: form.usbC ?? "",
+      lan: form.lan ?? "",
     };
 
     await onCreate(payload);
     onClose();
   };
+
+  const isUsbHub = currentCategory?.label === "USBハブ";
 
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
@@ -150,7 +163,7 @@ export const EquipmentCreateDialog: React.FC<Props> = ({ open, onClose, onCreate
 
             {/* カテゴリ入力は出さない（タブで選択済み） */}
 
-            <TextField label="枝番" variant="standard" size="small" fullWidth InputLabelProps={{ shrink: true }} value={form.branchNo} onChange={(e) => onChange("branchNo", e.target.value)} />
+            <TextField label="枝番" variant="standard" size="small" fullWidth InputLabelProps={{ shrink: true }} value={form.branchNo ?? ""} onChange={(e) => onChange("branchNo", e.target.value)} />
 
             {/* 機器名（必須） */}
             <TextField
@@ -248,17 +261,21 @@ export const EquipmentCreateDialog: React.FC<Props> = ({ open, onClose, onCreate
               ))}
             </TextField>
 
+            {/* ★ USBハブ専用フィールド */}
+            {isUsbHub && (
+              <Stack direction="row" spacing={2} sx={{ mt: 0.5 }}>
+                <TextField label="HDMI" variant="standard" size="small" value={form.hdmi ?? ""} onChange={(e) => onChange("hdmi", e.target.value)} />
+                <TextField label="USB A" variant="standard" size="small" value={form.usbA ?? ""} onChange={(e) => onChange("usbA", e.target.value)} />
+                <TextField label="USB C" variant="standard" size="small" value={form.usbC ?? ""} onChange={(e) => onChange("usbC", e.target.value)} />
+                <TextField label="LAN" variant="standard" size="small" value={form.lan ?? ""} onChange={(e) => onChange("lan", e.target.value)} />
+              </Stack>
+            )}
+
             <Box sx={{ display: "flex", gap: 1, pt: 0.5 }}>
               <Button onClick={onClose} variant="outlined" size="small" sx={{ flex: 1 }}>
                 閉じる
               </Button>
-              <Button
-                onClick={handleSave}
-                variant="contained"
-                size="small"
-                sx={{ flex: 1 }}
-                disabled={!isValid} // ★ 必須満たすまで保存不可
-              >
+              <Button onClick={handleSave} variant="contained" size="small" sx={{ flex: 1 }} disabled={!isValid}>
                 保存
               </Button>
             </Box>

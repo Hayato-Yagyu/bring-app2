@@ -3,39 +3,36 @@ import { useEffect, useState, useCallback } from "react";
 import { db } from "../firebase";
 import { doc, getDoc, setDoc, serverTimestamp, FieldValue } from "firebase/firestore";
 
-/**
- * スロット1枠分の型
- * - label: 表示名（Rack名/段数など）
- * - equipmentId: 割り当てる Equipment ドキュメントID（未設定は null）
- */
+/** スロット1枠分 */
 export type ServerSlot = {
   label: string;
   equipmentId: string | null;
 };
 
-/**
- * サーバ室レイアウトの型
- * - updatedBy は null を許容（解法A）
- * - updatedAt は serverTimestamp() を保持
- */
+/** サーバ室レイアウト（A案: updatedBy は null 許容） */
 export type ServerLayout = {
   name: string;
   slots: Record<string, ServerSlot>;
   updatedAt?: FieldValue;
-  updatedBy?: string | null; // ★ 解法A: null を許容
+  updatedBy?: string | null;
 };
 
-/**
- * 初期レイアウト（必要に応じて編集してください）
- */
+/** 初期レイアウト：サーバ室 正面（①〜⑫） */
 const DEFAULT_LAYOUT: ServerLayout = {
-  name: "メインルーム",
+  name: "サーバ室 正面",
   slots: {
-    "rackA-1": { label: "Rack A / 1U", equipmentId: null },
-    "rackA-2": { label: "Rack A / 2U", equipmentId: null },
-    "rackA-3": { label: "Rack A / 3U", equipmentId: null },
-    "rackB-1": { label: "Rack B / 1U", equipmentId: null },
-    "rackB-2": { label: "Rack B / 2U", equipmentId: null },
+    "front-01": { label: "①", equipmentId: null },
+    "front-02": { label: "②", equipmentId: null },
+    "front-03": { label: "③", equipmentId: null },
+    "front-04": { label: "④", equipmentId: null },
+    "front-05": { label: "⑤", equipmentId: null },
+    "front-06": { label: "⑥", equipmentId: null },
+    "front-07": { label: "⑦", equipmentId: null },
+    "front-08": { label: "⑧", equipmentId: null },
+    "front-09": { label: "⑨", equipmentId: null },
+    "front-10": { label: "⑩", equipmentId: null },
+    "front-11": { label: "⑪", equipmentId: null },
+    "front-12": { label: "⑫", equipmentId: null },
   },
 };
 
@@ -59,16 +56,10 @@ export const useServerLayout = (layoutId = "main") => {
     })();
   }, [layoutId]);
 
-  /**
-   * スロットへ機器を割り当て/解除する
-   * @param slotId スロットID（例: "rackA-1"）
-   * @param equipmentId 機器ID（解除は null）
-   * @param uid 実行ユーザーUID（未指定なら null 保存）
-   */
+  /** スロットへ機器を割り当て/解除する（解除は equipmentId=null） */
   const assign = useCallback(
     async (slotId: string, equipmentId: string | null, uid?: string) => {
       const ref = doc(db, "server_layouts", layoutId);
-
       const next: ServerLayout = {
         ...layout,
         slots: {
@@ -79,9 +70,8 @@ export const useServerLayout = (layoutId = "main") => {
           },
         },
         updatedAt: serverTimestamp(),
-        updatedBy: uid ?? null, // ★ 解法A: null を入れる
+        updatedBy: uid ?? null, // A案: null を保存
       };
-
       await setDoc(ref, next, { merge: true });
       setLayout(next);
     },
