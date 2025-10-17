@@ -8,6 +8,14 @@ import { tsToSlash, ymdToTimestamp, tsToYMD, toTimestamp } from "../utils/dateti
 import { resolveNameFromUsers } from "../utils/users";
 import { UserDoc } from "../types/equipment";
 
+// 文字列→ number | null （空/ハイフン/非数値は null）
+const toNumberOrNull = (v: unknown): number | null => {
+  const s = String(v ?? "").trim();
+  if (s === "" || s === "-") return null;
+  const n = Number(s);
+  return Number.isFinite(n) ? n : null;
+};
+
 export const useEquipments = () => {
   const [rowsRaw, setRowsRaw] = useState<Array<{ docId: string; data: EquipmentDoc }>>([]);
   const [importing, setImporting] = useState(false);
@@ -25,7 +33,7 @@ export const useEquipments = () => {
     return () => unsub();
   }, []);
 
-  // Grid 表示用変換
+  // Grid 表示用変換（座席は含めない：備考への混入事故を避ける）
   const gridRows: GridRow[] = useMemo(
     () =>
       rowsRaw.map(({ docId, data }, idx) => {
@@ -47,7 +55,7 @@ export const useEquipments = () => {
           note: data.note ?? "",
           location: data.location ?? "",
           lastEditor: data.lastEditor ?? "",
-          // ★ USBハブ用
+          // USBハブ列
           hdmi: data.hdmi ?? "",
           usbA: data.usbA ?? "",
           usbC: data.usbC ?? "",
@@ -93,8 +101,48 @@ export const useEquipments = () => {
     });
   };
 
+  // === CSV 定義（インデックス） ===
+  // 既定のインデックス（座席列なし）
+  const IDX_BASE = {
+    no: 0,
+    acceptedDate: 1,
+    assetNo: 2,
+    category: 3,
+    branchNo: 4,
+    deviceName: 5,
+    updatedOn: 6,
+    confirmedOn: 7,
+    disposedOn: 8,
+    owner: 9,
+    status: 10,
+    history: 11,
+    note: 12,
+    location: 13,
+    lastEditor: 14,
+  } as const;
+
+  // USBハブ拡張（HDMI/USB A/USB C/LAN/lastEditor シフト）
+  const IDX_USB = {
+    ...IDX_BASE,
+    hdmi: 14,
+    usbA: 15,
+    usbC: 16,
+    lan: 17,
+    lastEditor: 18,
+  } as const;
+
+  // ★ ディスプレイ：座席列あり（history の次に seatNo を挿入）
+  //    → note, location, lastEditor が 1 つずつ後ろにスライド
+  const IDX_DISPLAY_WITH_SEAT = {
+    ...IDX_BASE,
+    seatNo: 12,
+    note: 13,
+    location: 14,
+    lastEditor: 15,
+  } as const;
+
   // --- CSV インポート（従来：全体置換） ---
-  // ※ 混在CSVに対応：各行のカテゴリを見て USBハブ なら拡張列として解釈
+  // ※ 混在CSVに対応：行ごとにカテゴリを見て USB/ディスプレイを解釈
   const importCsv = async (file: File, activeUserRaw: UserDoc[]) => {
     setImporting(true);
     setProgress(0);
@@ -119,47 +167,25 @@ export const useEquipments = () => {
       setMessage("既存データを全削除中…");
       await deleteAllEquipments();
 
-      // 既定のインデックス
-      const IDX_BASE = {
-        no: 0,
-        acceptedDate: 1,
-        assetNo: 2,
-        category: 3,
-        branchNo: 4,
-        deviceName: 5,
-        updatedOn: 6,
-        confirmedOn: 7,
-        disposedOn: 8,
-        owner: 9,
-        status: 10,
-        history: 11,
-        note: 12,
-        location: 13,
-        lastEditor: 14,
-      } as const;
-
-      // USBハブ拡張（HDMI/USB A/USB C/LAN/最終更新者）
-      const IDX_USB = {
-        ...IDX_BASE,
-        lastEditor: 18,
-        hdmi: 14,
-        usbA: 15,
-        usbC: 16,
-        lan: 17,
-      } as const;
-
       const toWrite: Array<{ data: Partial<EquipmentDoc> }> = [];
+
       rows.forEach((cols, i) => {
         const c = (k: number) => clean(cols[k] ?? "");
-        const isUsb = (c(IDX_BASE.category) || "") === "USBハブ" && cols.length >= 19;
-        const IDX = isUsb ? (IDX_USB as any) : (IDX_BASE as any);
+        const csvCategory = (c(IDX_BASE.category) || "") as string;
+        const isUsb = csvCategory === "USBハブ" && cols.length >= 19;
+        const isDisplay = csvCategory === "ディスプレイ";
+
+        // ディスプレイで座席列が入った新フォーマット（総列数 16 以上）を優先認識
+        const useDisplayWithSeat = isDisplay && cols.length >= 16;
+
+        const IDX: any = isUsb ? IDX_USB : useDisplayWithSeat ? IDX_DISPLAY_WITH_SEAT : IDX_BASE;
 
         const seqFromCsv = toInt(c(IDX.no));
-        const data: Partial<EquipmentDoc> = {
+        const baseData: Partial<EquipmentDoc> = {
           seqOrder: seqFromCsv ?? i + 1,
           acceptedDate: toTimestamp(c(IDX.acceptedDate)),
           assetNo: toStrBlank(c(IDX.assetNo)),
-          category: toStrBlank(c(IDX.category)),
+          category: toStrBlank(csvCategory),
           branchNo: toStrBlank(c(IDX.branchNo)),
           deviceName: toStrBlank(c(IDX.deviceName)),
           updatedOn: toTimestamp(c(IDX.updatedOn)),
@@ -171,17 +197,27 @@ export const useEquipments = () => {
           note: toStrBlank(c(IDX.note)),
           location: toStrBlank(c(IDX.location)),
           lastEditor: resolvePerson(c(IDX.lastEditor)),
-          // ★ USB行のみ追加列を取り込む
-          ...(isUsb
-            ? {
-                hdmi: toStrBlank(c(IDX.hdmi)),
-                usbA: toStrBlank(c(IDX.usbA)),
-                usbC: toStrBlank(c(IDX.usbC)),
-                lan: toStrBlank(c(IDX.lan)),
-              }
-            : {}),
         };
-        if (hasMeaningfulValue(data)) toWrite.push({ data });
+
+        // ★ ディスプレイ：座席列
+        if (useDisplayWithSeat) {
+          baseData.seatNo = toNumberOrNull(c(IDX.seatNo));
+        } else if (isDisplay) {
+          // 旧フォーマット（座席列なし）→ null
+          baseData.seatNo = null;
+        }
+
+        // ★ USBハブ追加列
+        if (isUsb) {
+          baseData.hdmi = toStrBlank(c(IDX.hdmi));
+          baseData.usbA = toStrBlank(c(IDX.usbA));
+          baseData.usbC = toStrBlank(c(IDX.usbC));
+          baseData.lan = toStrBlank(c(IDX.lan));
+        }
+
+        if (hasMeaningfulValue(baseData as Record<string, any>)) {
+          toWrite.push({ data: baseData });
+        }
       });
 
       const CHUNK = 300;
@@ -225,47 +261,25 @@ export const useEquipments = () => {
       setMessage(`カテゴリ「${categoryLabel}」の既存データを削除中…`);
       await deleteEquipmentsByCategory(categoryLabel);
 
-      // 既定のインデックス
-      const IDX_BASE = {
-        no: 0,
-        acceptedDate: 1,
-        assetNo: 2,
-        category: 3, // CSVに列があっても無視し、下で上書き
-        branchNo: 4,
-        deviceName: 5,
-        updatedOn: 6,
-        confirmedOn: 7,
-        disposedOn: 8,
-        owner: 9,
-        status: 10,
-        history: 11,
-        note: 12,
-        location: 13,
-        lastEditor: 14,
-      } as const;
+      const isUsbCategory = categoryLabel === "USBハブ";
+      const isDisplayCategory = categoryLabel === "ディスプレイ";
 
-      // USBハブのヘッダ追加版
-      const IDX_USB = {
-        ...IDX_BASE,
-        lastEditor: 18,
-        hdmi: 14,
-        usbA: 15,
-        usbC: 16,
-        lan: 17,
-      } as const;
-
-      const useUsb = categoryLabel === "USBハブ";
       const toWrite: Array<{ data: Partial<EquipmentDoc> }> = [];
+
       rows.forEach((cols, i) => {
         const c = (k: number) => clean(cols[k] ?? "");
-        const IDX = useUsb && cols.length >= 19 ? (IDX_USB as any) : (IDX_BASE as any);
+
+        // ディスプレイで座席列がある新フォーマット（16 列以上）を優先、
+        // そうでなければ BASE/USB で解釈
+        const useDisplayWithSeat = isDisplayCategory && cols.length >= 16;
+        const IDX: any = isUsbCategory ? (cols.length >= 19 ? IDX_USB : IDX_BASE) : useDisplayWithSeat ? IDX_DISPLAY_WITH_SEAT : IDX_BASE;
 
         const seqFromCsv = toInt(c(IDX.no));
-        const data: Partial<EquipmentDoc> = {
+        const baseData: Partial<EquipmentDoc> = {
           seqOrder: seqFromCsv ?? i + 1,
           acceptedDate: toTimestamp(c(IDX.acceptedDate)),
           assetNo: toStrBlank(c(IDX.assetNo)),
-          category: categoryLabel, // ★ 強制上書き
+          category: categoryLabel, // 強制
           branchNo: toStrBlank(c(IDX.branchNo)),
           deviceName: toStrBlank(c(IDX.deviceName)),
           updatedOn: toTimestamp(c(IDX.updatedOn)),
@@ -277,16 +291,26 @@ export const useEquipments = () => {
           note: toStrBlank(c(IDX.note)),
           location: toStrBlank(c(IDX.location)),
           lastEditor: resolvePerson(c(IDX.lastEditor)),
-          ...(useUsb && cols.length >= 19
-            ? {
-                hdmi: toStrBlank(c(IDX.hdmi)),
-                usbA: toStrBlank(c(IDX.usbA)),
-                usbC: toStrBlank(c(IDX.usbC)),
-                lan: toStrBlank(c(IDX.lan)),
-              }
-            : {}),
         };
-        if (hasMeaningfulValue(data as Record<string, any>)) toWrite.push({ data });
+
+        // ★ ディスプレイ：座席列
+        if (useDisplayWithSeat) {
+          baseData.seatNo = toNumberOrNull(c(IDX.seatNo));
+        } else if (isDisplayCategory) {
+          baseData.seatNo = null;
+        }
+
+        // ★ USBハブ：追加列
+        if (isUsbCategory && cols.length >= 19) {
+          baseData.hdmi = toStrBlank(c(IDX.hdmi));
+          baseData.usbA = toStrBlank(c(IDX.usbA));
+          baseData.usbC = toStrBlank(c(IDX.usbC));
+          baseData.lan = toStrBlank(c(IDX.lan));
+        }
+
+        if (hasMeaningfulValue(baseData as Record<string, any>)) {
+          toWrite.push({ data: baseData });
+        }
       });
 
       const CHUNK = 300;
@@ -308,7 +332,6 @@ export const useEquipments = () => {
   // --- CRUD ---
 
   const createOne = async (payload: EquipmentDoc) => {
-    // 監査情報の付与（seqOrderが未設定ならエポックmsを暫定で）
     const data: EquipmentDoc & { createdAt?: any; updatedAt?: any } = {
       ...payload,
       seqOrder: payload.seqOrder ?? Date.now(),
@@ -339,8 +362,8 @@ export const useEquipments = () => {
     message,
     setMessage,
     // CSV
-    importCsv, // 従来：全体置換（USB混在にも対応）
-    importCsvForCategory, // ★ 追加：カテゴリ単位置換（USBハブ列にも対応）
+    importCsv, // 全体置換（混在CSV対応）
+    importCsvForCategory, // カテゴリ単置換（ディスプレイ座席/USB拡張対応）
     pendingFileRef,
     setImporting,
     setProgress,
@@ -348,8 +371,8 @@ export const useEquipments = () => {
     createOne,
     updateOne,
     deleteOne,
-    // 日付ユーティリティ
+    // 日付ユーティリティ（フォームから利用）
     tsToYMD,
-    ymdToTimestamp, // フォーム用
+    ymdToTimestamp,
   };
 };

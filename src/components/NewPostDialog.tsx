@@ -1,10 +1,11 @@
 // src/components/NewPostDialog.tsx
-import React, { SetStateAction, useEffect, useState } from "react";
-import { Dialog, DialogTitle, DialogContent, DialogActions, Button, Stack, Typography, TextField, MenuItem, Box, Paper } from "@mui/material";
+import React, { SetStateAction, useEffect, useMemo, useState } from "react";
+import { Dialog, DialogTitle, DialogContent, DialogActions, Button, Stack, Typography, TextField, MenuItem, Box, Paper, Autocomplete, CircularProgress } from "@mui/material";
 import styled from "@emotion/styled";
-import { collection, addDoc, getDocs, serverTimestamp } from "firebase/firestore";
+import { collection, addDoc, getDocs, serverTimestamp, query, where } from "firebase/firestore";
 import { db } from "../firebase";
-import emailjs from "@emailjs/browser";
+//import emailjs from "@emailjs/browser";
+import emailjs from "../lib/emailjs";
 import ComfirmDialog from "./ComfirmDialog";
 import Where from "./Where";
 import { useUser } from "../components/UserContext";
@@ -17,6 +18,25 @@ type Props = {
 
 type Approver = { name: string; email: string };
 
+// 資産カテゴリ（asset_categories）
+type AssetCategory = {
+  id: string;
+  code?: string;
+  label: string; // 例：パソコン
+  displayOrder?: number; // 表示順
+  isTarget?: boolean;
+};
+
+// equipments（設備台帳）: 設備番号をここから拾う
+type EquipmentLite = {
+  id: string;
+  assetNo: string; // 設備番号
+  deviceName?: string; // 表示補助
+  owner?: string; // ★ 追加：所有者表示用
+  seqOrder?: number; // 並び順
+  category?: string; // カテゴリ名（asset_categories.label と一致）
+};
+
 const EMAILJS_SERVICE_ID = "service_0sslyge";
 const EMAILJS_TEMPLATE_ID = "template_81c28kt";
 
@@ -26,13 +46,11 @@ const NewPostDialog: React.FC<Props> = ({ open, onClose, onSaved }) => {
   const [classification, setClassification] = useState("");
   const [periodfrom, setPeriodfrom] = useState("");
   const [periodto, setPeriodto] = useState("");
-  const [where, setWhere] = useState("");
+  const [whereValue, setWhereValue] = useState("");
 
-  // UI: 設備番号（DBでは media に入れる）
-  const [materials, setMaterials] = useState("");
-
-  // UI: 設備（選択）
-  const [media, setMedia] = useState("");
+  // 既存仕様：materials=設備名（カテゴリ名）、media=設備番号（assetNo）
+  const [materials, setMaterials] = useState(""); // 設備番号（assetNo）
+  const [media, setMedia] = useState(""); // 設備（カテゴリ名／label）
   const [mediaOther, setMediaOther] = useState("");
 
   const [permitdate, setPermitdate] = useState("");
@@ -43,29 +61,40 @@ const NewPostDialog: React.FC<Props> = ({ open, onClose, onSaved }) => {
   const [openDialog, setOpenDialog] = useState(false);
   const [dialogMessage, setDialogMessage] = useState("入力されていないフィールドがあります。");
   const [isSubmitted, setIsSubmitted] = useState(false);
-
   const [dateError, setDateError] = useState<string | null>(null);
 
   const [approvers, setApprovers] = useState<Approver[]>([]);
   const [toEmail, setToEmail] = useState<string>("");
-  const [toName, setToName] = useState("");
+  const [toName, setToName] = useState<string>("");
 
   const [isSending, setIsSending] = useState(false);
 
   const { user } = useUser();
-
   const handleCloseDialog = () => setOpenDialog(false);
 
+  // カテゴリ＆設備番号候補
+  const [categories, setCategories] = useState<AssetCategory[]>([]);
+  const [assetNoOptions, setAssetNoOptions] = useState<EquipmentLite[]>([]);
+  const [loadingCategories, setLoadingCategories] = useState(false);
+  const [loadingAssetNos, setLoadingAssetNos] = useState(false);
+
+  // 持込・持出先 UI
+  const [selectedOption, setSelectedOption] = useState("");
+  const [otherInput, setOtherInput] = useState("");
+
+  // 申請者デフォルト
   useEffect(() => {
     const name = (user as any)?.displayName?.trim?.() || (user as any)?.email || "";
     setApplicant(name);
   }, [user]);
 
+  // 承認者名の追従
   useEffect(() => {
     const a = approvers.find((x) => x.email === toEmail);
     setToName(a?.name ?? "");
   }, [toEmail, approvers]);
 
+  // 日付検証
   const validateDateRange = (from: string, to: string) => {
     if (!from || !to) {
       setDateError(null);
@@ -76,9 +105,35 @@ const NewPostDialog: React.FC<Props> = ({ open, onClose, onSaved }) => {
     return ok;
   };
 
+  // 初期ロード：カテゴリ(asset_categories) と 承認者
   useEffect(() => {
     if (!open) return;
-    const loadApprovers = async () => {
+    const loadInitial = async () => {
+      try {
+        setLoadingCategories(true);
+        // インデックス不要版：where のみで取得 → displayOrder はクライアントソート
+        const qsCats = await getDocs(query(collection(db, "asset_categories"), where("isTarget", "==", true)));
+        const cats: AssetCategory[] = qsCats.docs.map((d) => {
+          const data = d.data() as any;
+          return {
+            id: d.id,
+            code: data?.code ?? undefined,
+            label: String(data?.label ?? ""),
+            displayOrder: data?.displayOrder,
+            isTarget: !!data?.isTarget,
+          };
+        });
+        cats.sort((a, b) => (a.displayOrder ?? 9e9) - (b.displayOrder ?? 9e9));
+        setCategories(cats);
+        if (!media && cats.length > 0) setMedia(cats[0].label);
+      } catch (e) {
+        console.error("Failed to load asset_categories:", e);
+        setDialogMessage("設備カテゴリ（asset_categories）の取得に失敗しました。");
+        setOpenDialog(true);
+      } finally {
+        setLoadingCategories(false);
+      }
+
       try {
         const qs = await getDocs(collection(db, "approvers"));
         const list: Approver[] = qs.docs
@@ -87,31 +142,67 @@ const NewPostDialog: React.FC<Props> = ({ open, onClose, onSaved }) => {
             return { name: data?.name ?? "", email: data?.email ?? "" };
           })
           .filter((a) => a.email);
-
         setApprovers(list);
         if (list.length > 0) setToEmail(list[0].email);
       } catch (e) {
         console.error("Failed to load approvers:", e);
-        setDialogMessage("承認者マスタの取得に失敗しました。ネットワークや権限をご確認ください。");
+        setDialogMessage("承認者マスタの取得に失敗しました。");
         setOpenDialog(true);
       }
     };
-    loadApprovers();
-  }, [open]);
+    loadInitial();
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // 設備カテゴリ（media/label）変更時：equipments から assetNo を取得
+  useEffect(() => {
+    if (!open) return;
+    if (!media) {
+      setAssetNoOptions([]);
+      setMaterials("");
+      return;
+    }
+    const fetchAssetNos = async () => {
+      setLoadingAssetNos(true);
+      try {
+        // インデックス不要版：where のみで取得 → seqOrder はクライアントソート
+        const snap = await getDocs(query(collection(db, "equipments"), where("category", "==", media)));
+        const rows: EquipmentLite[] = snap.docs.map((d) => {
+          const data = d.data() as any;
+          return {
+            id: d.id,
+            assetNo: String(data?.assetNo ?? ""),
+            deviceName: data?.deviceName ?? "",
+            owner: data?.owner ?? "", // ★ 追加：owner 取り込み
+            seqOrder: data?.seqOrder,
+            category: data?.category ?? "",
+          };
+        });
+        rows.sort((a, b) => (a.seqOrder ?? 9e9) - (b.seqOrder ?? 9e9));
+        setAssetNoOptions(rows);
+        setMaterials(""); // カテゴリを変えたら設備番号はクリア
+      } catch (e) {
+        console.error("Failed to load equipments by category:", e);
+        setDialogMessage("equipments の取得に失敗しました。");
+        setOpenDialog(true);
+      } finally {
+        setLoadingAssetNos(false);
+      }
+    };
+    fetchAssetNos();
+  }, [open, media]);
+
+  // ダイアログ再オープンで送信済みフラグを戻す
   useEffect(() => {
     if (!open) setIsSubmitted(false);
   }, [open]);
 
   // ★ フォーム一括リセット（applicant/toEmail は残す）
-  const [selectedOption, setSelectedOption] = useState("");
-  const [otherInput, setOtherInput] = useState("");
   const resetForm = () => {
     setApplicantdate("");
     setClassification("");
     setPeriodfrom("");
     setPeriodto("");
-    setWhere("");
+    setWhereValue("");
     setMaterials("");
     setMedia("");
     setMediaOther("");
@@ -123,9 +214,10 @@ const NewPostDialog: React.FC<Props> = ({ open, onClose, onSaved }) => {
     setIsSubmitted(false);
     setSelectedOption("");
     setOtherInput("");
+    setAssetNoOptions([]);
   };
 
-  // DialogのonCloseをラップ：閉じる経路すべてで確実にリセット
+  // Dialog onClose ラップ
   const handleDialogClose = (_event?: object, _reason?: string) => {
     if (!isSending) resetForm();
     onClose?.();
@@ -135,14 +227,23 @@ const NewPostDialog: React.FC<Props> = ({ open, onClose, onSaved }) => {
     event.preventDefault();
     if (isSending) return;
 
-    if (!applicantdate.trim() || !applicant.trim() || !classification.trim() || !periodfrom.trim() || !periodto.trim() || !where.trim() || !materials.trim() || !media.trim()) {
+    if (
+      !applicantdate.trim() ||
+      !applicant.trim() ||
+      !classification.trim() ||
+      !periodfrom.trim() ||
+      !periodto.trim() ||
+      !whereValue.trim() ||
+      !media.trim() || // 設備（カテゴリ名）
+      !materials.trim() // 設備番号（assetNo）
+    ) {
       setDialogMessage("入力されていないフィールドがあります。");
       setOpenDialog(true);
       return;
     }
 
     if (!validateDateRange(periodfrom, periodto)) {
-      setDialogMessage("「持込・持出日」の範囲が不正です（開始日 ≤ 終了日 となるように入力してください）。");
+      setDialogMessage("「持込・持出日」の範囲が不正です（開始日 ≤ 終了日）。");
       setOpenDialog(true);
       return;
     }
@@ -161,20 +262,20 @@ const NewPostDialog: React.FC<Props> = ({ open, onClose, onSaved }) => {
 
     setIsSending(true);
     try {
-      // 保存用に設備名を正規化
+      // 保存用に設備名（カテゴリ）を確定
       const mediaDisplay = media === "その他" ? mediaOther.trim() : media;
 
-      // 1) posts へ登録
+      // 1) posts へ登録（既存仕様：materials=設備名, media=設備番号）
       const postPayload = {
         applicantdate,
         applicant,
         classification,
         periodfrom,
         periodto,
-        where,
-        materials: mediaDisplay, // 設備名
-        media: materials, // 設備番号
-        mediaRaw: media,
+        where: whereValue,
+        materials: mediaDisplay, // 設備名（カテゴリlabel）
+        media: materials, // 設備番号（assetNo）
+        mediaRaw: media, // 選択カテゴリlabel（その他含む）
         permitdate,
         permitstamp,
         confirmationdate,
@@ -185,10 +286,10 @@ const NewPostDialog: React.FC<Props> = ({ open, onClose, onSaved }) => {
       };
       const docRef = await addDoc(collection(db, "posts"), postPayload);
 
-      // 2) approvals へ「未処理タスク」を作成
+      // 2) approvals へ未処理タスク
       const approvalPayload = {
-        type: "new" as const, // "new" | "change" | "return"
-        status: "pending" as const, // "pending" | "approved" | "rejected"
+        type: "new" as const,
+        status: "pending" as const,
         postId: docRef.id,
         assigneeEmail: toEmail,
         assigneeName: toName,
@@ -201,7 +302,7 @@ const NewPostDialog: React.FC<Props> = ({ open, onClose, onSaved }) => {
           classification,
           periodfrom,
           periodto,
-          where,
+          where: whereValue,
           materials: mediaDisplay,
           media: materials,
         },
@@ -209,7 +310,7 @@ const NewPostDialog: React.FC<Props> = ({ open, onClose, onSaved }) => {
       };
       await addDoc(collection(db, "approvals"), approvalPayload);
 
-      // 3) 承認メール送信（EmailJS）
+      // 3) 承認メール（EmailJS）
       const emailHtml = "https://kdsbring.netlify.app/";
       const templateParams = {
         to_name: toName,
@@ -222,9 +323,9 @@ const NewPostDialog: React.FC<Props> = ({ open, onClose, onSaved }) => {
         classification,
         periodfrom,
         periodto,
-        where,
-        materials: mediaDisplay, // 設備名
-        media: materials, // 設備番号
+        where: whereValue,
+        materials: mediaDisplay,
+        media: materials,
         link: emailHtml,
         action: "登録",
       };
@@ -232,8 +333,6 @@ const NewPostDialog: React.FC<Props> = ({ open, onClose, onSaved }) => {
       console.log("EmailJS send success:", res);
 
       setIsSubmitted(true);
-
-      // ★ 入力クリアして閉じる（次回オープン時に前回選択が残らない）
       resetForm();
       onSaved?.();
       onClose();
@@ -252,17 +351,28 @@ const NewPostDialog: React.FC<Props> = ({ open, onClose, onSaved }) => {
     onClose();
   };
 
+  // 持込・持出先ハンドラ
   const handleOptionChange = (event: { target: { value: any } }) => {
     const value = event.target.value;
     setSelectedOption(value);
-    setWhere(value);
+    setWhereValue(value);
     if (value === "その他") setOtherInput("");
   };
-
   const handleOtherInputChange = (event: { target: { value: SetStateAction<string> } }) => {
     const other = event.target.value as string;
     setOtherInput(other);
-    setWhere(other);
+    setWhereValue(other);
+  };
+
+  // 選択中の設備番号 option
+  const selectedAssetOption = useMemo(() => (materials ? assetNoOptions.find((x) => x.assetNo === materials) || null : null), [assetNoOptions, materials]);
+
+  // 表示用：assetNo + deviceName + owner
+  const assetNoDisplay = (e: EquipmentLite) => {
+    const parts: string[] = [];
+    if (e.deviceName) parts.push(e.deviceName);
+    if (e.owner) parts.push(e.owner);
+    return parts.length ? `${e.assetNo}（${parts.join(" ／ ")}）` : e.assetNo;
   };
 
   return (
@@ -271,13 +381,7 @@ const NewPostDialog: React.FC<Props> = ({ open, onClose, onSaved }) => {
       <DialogContent dividers>
         <Outer>
           <Paper elevation={0} sx={{ p: 1, width: "100%" }}>
-            <Box
-              component="form"
-              onSubmit={handleSubmit}
-              sx={{
-                "& .MuiTextField-root": { my: 0.25 },
-              }}
-            >
+            <Box component="form" onSubmit={handleSubmit} sx={{ "& .MuiTextField-root": { my: 0.25 } }}>
               <Stack direction="column" spacing={0.5}>
                 <TextField label="申請者" variant="standard" size="small" margin="dense" fullWidth InputLabelProps={{ shrink: true }} value={applicant} InputProps={{ readOnly: true }} />
 
@@ -385,27 +489,37 @@ const NewPostDialog: React.FC<Props> = ({ open, onClose, onSaved }) => {
                   />
                 )}
 
-                <TextField
-                  label="設備"
-                  select
-                  variant="standard"
-                  size="small"
-                  margin="dense"
-                  fullWidth
-                  InputLabelProps={{ shrink: true }}
-                  value={media}
-                  onChange={(e) => {
-                    const v = e.target.value as string;
-                    setMedia(v);
-                    if (v !== "その他") setMediaOther("");
+                {/* 設備（カテゴリ）: asset_categories.label（isTarget==true を displayOrder でクライアントソート） */}
+                <Autocomplete
+                  value={media || null}
+                  onChange={(_, v) => {
+                    const name = (v as string) || "";
+                    setMedia(name);
+                    if (name !== "その他") setMediaOther("");
                   }}
-                >
-                  <MenuItem value="PC">PC</MenuItem>
-                  <MenuItem value="スマートフォン">スマートフォン</MenuItem>
-                  <MenuItem value="USBメモリ">USBメモリ</MenuItem>
-                  <MenuItem value="外付けHDD">外付けHDD</MenuItem>
-                  <MenuItem value="その他">その他</MenuItem>
-                </TextField>
+                  options={categories.map((c) => c.label)}
+                  loading={loadingCategories}
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      label="設備"
+                      variant="standard"
+                      size="small"
+                      margin="dense"
+                      fullWidth
+                      InputLabelProps={{ shrink: true }}
+                      InputProps={{
+                        ...params.InputProps,
+                        endAdornment: (
+                          <>
+                            {loadingCategories ? <CircularProgress size={16} /> : null}
+                            {params.InputProps.endAdornment}
+                          </>
+                        ),
+                      }}
+                    />
+                  )}
+                />
 
                 {media === "その他" && (
                   <TextField
@@ -421,15 +535,38 @@ const NewPostDialog: React.FC<Props> = ({ open, onClose, onSaved }) => {
                   />
                 )}
 
-                <TextField
-                  label="設備番号"
-                  variant="standard"
-                  size="small"
-                  margin="dense"
-                  fullWidth
-                  InputLabelProps={{ shrink: true }}
-                  value={materials}
-                  onChange={(e) => setMaterials(e.target.value)}
+                {/* 設備番号: equipments.assetNo（category==media で取得し、seqOrder でクライアントソート） */}
+                <Autocomplete
+                  value={selectedAssetOption}
+                  onChange={(_, v) => {
+                    const selectedNo = (v as EquipmentLite | null)?.assetNo ?? "";
+                    setMaterials(selectedNo); // 設備番号（assetNo）
+                  }}
+                  options={assetNoOptions}
+                  getOptionLabel={(o) => (o ? assetNoDisplay(o) : "")}
+                  isOptionEqualToValue={(a, b) => a?.assetNo === (b as any)?.assetNo}
+                  loading={loadingAssetNos}
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      label="設備番号"
+                      variant="standard"
+                      size="small"
+                      margin="dense"
+                      fullWidth
+                      InputLabelProps={{ shrink: true }}
+                      placeholder={media ? `${media} の設備番号を選択` : "先に設備（資産カテゴリ）を選択してください"}
+                      InputProps={{
+                        ...params.InputProps,
+                        endAdornment: (
+                          <>
+                            {loadingAssetNos ? <CircularProgress size={16} /> : null}
+                            {params.InputProps.endAdornment}
+                          </>
+                        ),
+                      }}
+                    />
+                  )}
                 />
 
                 <Box sx={{ display: "flex", gap: 1, pt: 0.5 }}>

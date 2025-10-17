@@ -2,7 +2,7 @@
 import React, { SetStateAction, useEffect, useState } from "react";
 import { Dialog, DialogTitle, DialogContent, DialogActions, Button, Stack, Typography, TextField, MenuItem, Box, Paper } from "@mui/material";
 import styled from "@emotion/styled";
-import { collection, addDoc, getDocs, serverTimestamp } from "firebase/firestore"; // ★ serverTimestamp 追加
+import { collection, addDoc, getDocs, serverTimestamp } from "firebase/firestore";
 import { db } from "../firebase";
 import emailjs from "@emailjs/browser";
 import ComfirmDialog from "./ComfirmDialog";
@@ -28,7 +28,7 @@ const NewPostDialog: React.FC<Props> = ({ open, onClose, onSaved }) => {
   const [periodto, setPeriodto] = useState("");
   const [where, setWhere] = useState("");
 
-  // UI: 設備番号
+  // UI: 設備番号（DBでは media に入れる）
   const [materials, setMaterials] = useState("");
 
   // UI: 設備（選択）
@@ -103,6 +103,34 @@ const NewPostDialog: React.FC<Props> = ({ open, onClose, onSaved }) => {
     if (!open) setIsSubmitted(false);
   }, [open]);
 
+  // ★ フォーム一括リセット（applicant/toEmail は残す）
+  const [selectedOption, setSelectedOption] = useState("");
+  const [otherInput, setOtherInput] = useState("");
+  const resetForm = () => {
+    setApplicantdate("");
+    setClassification("");
+    setPeriodfrom("");
+    setPeriodto("");
+    setWhere("");
+    setMaterials("");
+    setMedia("");
+    setMediaOther("");
+    setPermitdate("");
+    setPermitstamp("");
+    setConfirmationdate("");
+    setConfirmationstamp("");
+    setDateError(null);
+    setIsSubmitted(false);
+    setSelectedOption("");
+    setOtherInput("");
+  };
+
+  // DialogのonCloseをラップ：閉じる経路すべてで確実にリセット
+  const handleDialogClose = (_event?: object, _reason?: string) => {
+    if (!isSending) resetForm();
+    onClose?.();
+  };
+
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (isSending) return;
@@ -157,16 +185,15 @@ const NewPostDialog: React.FC<Props> = ({ open, onClose, onSaved }) => {
       };
       const docRef = await addDoc(collection(db, "posts"), postPayload);
 
-      // 2) approvals へ「未処理タスク」を作成（★ 承認バッジ用）
+      // 2) approvals へ「未処理タスク」を作成
       const approvalPayload = {
-        type: "new", // "new" | "change" | "return"
-        status: "pending", // "pending" | "approved" | "rejected"
-        postId: docRef.id, // 紐づく posts のID
-        assigneeEmail: toEmail, // 承認者メール（バッジの対象判定）
+        type: "new" as const, // "new" | "change" | "return"
+        status: "pending" as const, // "pending" | "approved" | "rejected"
+        postId: docRef.id,
+        assigneeEmail: toEmail,
         assigneeName: toName,
         requestedBy: user?.email ?? "",
-        requestedAt: serverTimestamp(), // サーバ時刻でOK
-        // 画面に出すためのスナップショット（任意に減らしてもOK）
+        requestedAt: serverTimestamp(),
         snapshot: {
           id: docRef.id,
           applicantdate,
@@ -178,7 +205,6 @@ const NewPostDialog: React.FC<Props> = ({ open, onClose, onSaved }) => {
           materials: mediaDisplay,
           media: materials,
         },
-        // 参照リンクなど（必要なら）
         link: "https://kdsbring.netlify.app/",
       };
       await addDoc(collection(db, "approvals"), approvalPayload);
@@ -207,21 +233,8 @@ const NewPostDialog: React.FC<Props> = ({ open, onClose, onSaved }) => {
 
       setIsSubmitted(true);
 
-      // 入力クリア
-      setApplicantdate("");
-      setClassification("");
-      setPeriodfrom("");
-      setPeriodto("");
-      setWhere("");
-      setMaterials("");
-      setMedia("");
-      setMediaOther("");
-      setPermitdate("");
-      setPermitstamp("");
-      setConfirmationdate("");
-      setConfirmationstamp("");
-      setDateError(null);
-
+      // ★ 入力クリアして閉じる（次回オープン時に前回選択が残らない）
+      resetForm();
       onSaved?.();
       onClose();
     } catch (err: any) {
@@ -235,26 +248,9 @@ const NewPostDialog: React.FC<Props> = ({ open, onClose, onSaved }) => {
 
   const handleReset = () => {
     if (isSending) return;
-    setApplicantdate("");
-    setClassification("");
-    setPeriodfrom("");
-    setPeriodto("");
-    setWhere("");
-    setMaterials("");
-    setMedia("");
-    setMediaOther("");
-    setPermitdate("");
-    setPermitstamp("");
-    setConfirmationdate("");
-    setConfirmationstamp("");
-    setIsSubmitted(false);
-    setSelectedOption("");
-    setDateError(null);
+    resetForm();
     onClose();
   };
-
-  const [selectedOption, setSelectedOption] = useState("");
-  const [otherInput, setOtherInput] = useState("");
 
   const handleOptionChange = (event: { target: { value: any } }) => {
     const value = event.target.value;
@@ -270,7 +266,7 @@ const NewPostDialog: React.FC<Props> = ({ open, onClose, onSaved }) => {
   };
 
   return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
+    <Dialog open={open} onClose={handleDialogClose} fullWidth maxWidth="sm">
       <DialogTitle>新規登録</DialogTitle>
       <DialogContent dividers>
         <Outer>
@@ -459,7 +455,7 @@ const NewPostDialog: React.FC<Props> = ({ open, onClose, onSaved }) => {
       </DialogContent>
 
       <DialogActions>
-        <Button onClick={onClose}>閉じる</Button>
+        <Button onClick={handleReset}>閉じる</Button>
       </DialogActions>
     </Dialog>
   );

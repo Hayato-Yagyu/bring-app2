@@ -1,5 +1,6 @@
 // src/index.tsx
 import React from "react";
+import "./lib/emailjs";
 import ReactDOM from "react-dom/client";
 import "./index.css";
 import { AppRoutes } from "./Routes";

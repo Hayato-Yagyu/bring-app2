@@ -26,6 +26,9 @@ export type EquipmentDoc = {
   lan?: string | null;
 
   seqOrder?: number | null; // No.
+
+  // ★ 追加：座席番号（1〜26など）
+  seatNo?: number | null;
 };
 
 export type GridRow = {
@@ -42,6 +45,10 @@ export type GridRow = {
   owner: string;
   status: string;
   history: string;
+
+  // ★ 追加：座席番号（表示用）
+  seatNo?: string | number | null;
+
   note: string;
   location: string;
   lastEditor: string;

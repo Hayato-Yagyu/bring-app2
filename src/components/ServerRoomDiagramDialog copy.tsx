@@ -21,13 +21,9 @@ export const ServerRoomDiagramDialog: React.FC<Props> = ({ open, onClose, equipm
   const routerSlotIds = useMemo(() => new Set(["left-net-01", "left-net-02", "left-net-03"]), []);
   const isRouterSlot = useCallback((slotId?: string | null) => (slotId ? routerSlotIds.has(slotId) : false), [routerSlotIds]);
 
-  // === HUB用スロット判定（USBハブの候補に切替したいスロット） ===
+  // === ★ HUB用スロット判定（USBハブの候補に切替したいスロット） ===
   const hubSlotIds = useMemo(() => new Set(["left-net-04", "left-net-05"]), []);
   const isHubSlot = useCallback((slotId?: string | null) => (slotId ? hubSlotIds.has(slotId) : false), [hubSlotIds]);
-
-  // === L2スイッチ・ハブ用スロット判定（ONU／モバビジ機器） ===
-  const l2HubSlotIds = useMemo(() => new Set(["left-net-06", "left-net-07"]), []);
-  const isL2HubSlot = useCallback((slotId?: string | null) => (slotId ? l2HubSlotIds.has(slotId) : false), [l2HubSlotIds]);
 
   // === ラベルは assetNo を最優先（空なら label→id） ===
   const getAssetNoLabel = useCallback((opt?: EquipmentOption | null) => {
@@ -67,22 +63,9 @@ export const ServerRoomDiagramDialog: React.FC<Props> = ({ open, onClose, equipm
     return withLabel;
   }, [equipments, getAssetNoLabel]);
 
-  // === usbHubs: equipments から category==="USBハブ" のみ抽出（HUBスロット用） ===
+  // === ★ usbHubs: equipments から category==="USBハブ" のみ抽出し、assetNo ラベル ===
   const usbHubOptions = useMemo(() => {
     const src = (equipments || []).filter((e) => String(e?.raw?.category ?? "").trim() === "USBハブ");
-    const withLabel = src.map((e) => ({ ...e, label: getAssetNoLabel(e) }));
-    withLabel.sort((a, b) => {
-      const sa = Number(a.raw?.seqOrder ?? Number.MAX_SAFE_INTEGER);
-      const sb = Number(b.raw?.seqOrder ?? Number.MAX_SAFE_INTEGER);
-      if (sa !== sb) return sa - sb;
-      return a.label.localeCompare(b.label, "ja");
-    });
-    return withLabel;
-  }, [equipments, getAssetNoLabel]);
-
-  // === l2Hubs: equipments から category==="L2スイッチ・ハブ" のみ抽出（ONU／モバビジ機器用） ===
-  const l2HubOptions = useMemo(() => {
-    const src = (equipments || []).filter((e) => String(e?.raw?.category ?? "").trim() === "L2スイッチ・ハブ");
     const withLabel = src.map((e) => ({ ...e, label: getAssetNoLabel(e) }));
     withLabel.sort((a, b) => {
       const sa = Number(a.raw?.seqOrder ?? Number.MAX_SAFE_INTEGER);
@@ -112,13 +95,11 @@ export const ServerRoomDiagramDialog: React.FC<Props> = ({ open, onClose, equipm
     [layout.slots, findEquipById, getAssetNoLabel]
   );
 
-  // クリック時：スロットの種別に応じて候補（ルーター／USBハブ／L2スイッチ・ハブ／サーバー）を決定
+  // クリック時：スロットの種別に応じて候補（サーバー or ルーター or USBハブ）を決定
   const handleSlotClick = (slotId: string) => {
     setActiveSlotId(slotId);
     const eqId = layout.slots[slotId]?.equipmentId || null;
-
-    const pool = isRouterSlot(slotId) ? routerOptions : isHubSlot(slotId) ? usbHubOptions : isL2HubSlot(slotId) ? l2HubOptions : serverOptions;
-
+    const pool = isRouterSlot(slotId) ? routerOptions : isHubSlot(slotId) ? usbHubOptions : serverOptions;
     const current = (pool || []).find((e) => e.id === eqId) || null;
     setSelectedEquip(current);
   };
@@ -358,23 +339,15 @@ export const ServerRoomDiagramDialog: React.FC<Props> = ({ open, onClose, equipm
   );
 
   // === スロット種別に応じてオートコンプリートの候補・表示文言を切替 ===
-  const optionPool = isRouterSlot(activeSlotId) ? routerOptions : isHubSlot(activeSlotId) ? usbHubOptions : isL2HubSlot(activeSlotId) ? l2HubOptions : serverOptions;
+  const optionPool = isRouterSlot(activeSlotId) ? routerOptions : isHubSlot(activeSlotId) ? usbHubOptions : serverOptions;
 
   const acLabel = isRouterSlot(activeSlotId)
     ? "割り当てる機器（assetNo／ルーターのみ）"
     : isHubSlot(activeSlotId)
     ? "割り当てる機器（assetNo／USBハブのみ）"
-    : isL2HubSlot(activeSlotId)
-    ? "割り当てる機器（assetNo／L2スイッチ・ハブのみ）"
     : "割り当てる機器（assetNo／サーバーのみ）";
 
-  const noOptionsText = isRouterSlot(activeSlotId)
-    ? "ルーターが見つかりません"
-    : isHubSlot(activeSlotId)
-    ? "USBハブが見つかりません"
-    : isL2HubSlot(activeSlotId)
-    ? "L2スイッチ・ハブが見つかりません"
-    : "サーバーが見つかりません";
+  const noOptionsText = isRouterSlot(activeSlotId) ? "ルーターが見つかりません" : isHubSlot(activeSlotId) ? "USBハブが見つかりません" : "サーバーが見つかりません";
 
   const placeholder = "assetNo を選択";
 
@@ -396,7 +369,7 @@ export const ServerRoomDiagramDialog: React.FC<Props> = ({ open, onClose, equipm
         </DialogActions>
       </Dialog>
 
-      {/* 編集用ダイアログ（サーバー／ルーター／USBハブ／L2スイッチ・ハブに自動切替） */}
+      {/* 編集用ダイアログ（サーバー／ルーター／USBハブに自動切替し、assetNo表示） */}
       <Dialog
         open={!!activeSlotId}
         onClose={() => {

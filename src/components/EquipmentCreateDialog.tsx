@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Dialog, DialogTitle, DialogContent, TextField, Button, MenuItem, Box, Stack } from "@mui/material";
+import { Dialog, DialogTitle, DialogContent, TextField, Button, MenuItem, Box, Stack, FormControl, InputLabel, Select, FormHelperText } from "@mui/material";
 import { EquipmentDoc, STATUS_OPTIONS } from "../types/equipment";
 import { ymdToTimestamp } from "../utils/datetime";
 import { Timestamp } from "firebase/firestore";
 import { generateEquipmentNo } from "../utils/equipmentNo";
+import { useSeatMasters } from "../hooks/useSeatMasters";
 
 type Props = {
   open: boolean;
@@ -25,7 +26,7 @@ export const EquipmentCreateDialog: React.FC<Props> = ({ open, onClose, onCreate
     confirmedOn: null,
     disposedOn: null,
     assetNo: "",
-    category: "", // UIでは入力しない（固定: currentCategory.label）
+    category: "",
     branchNo: "",
     deviceName: "",
     owner: "",
@@ -34,13 +35,19 @@ export const EquipmentCreateDialog: React.FC<Props> = ({ open, onClose, onCreate
     note: "",
     location: "",
     lastEditor: "",
-    // ★ USBハブ用
     hdmi: "",
     usbA: "",
     usbC: "",
     lan: "",
     seqOrder: null,
+    seatNo: null,
   });
+
+  const { seats, loading } = useSeatMasters();
+
+  // カテゴリ判定
+  const isUsbHub = currentCategory?.label === "USBハブ";
+  const isDisplay = currentCategory?.label === "ディスプレイ";
 
   useEffect(() => {
     if (open) {
@@ -50,7 +57,7 @@ export const EquipmentCreateDialog: React.FC<Props> = ({ open, onClose, onCreate
         confirmedOn: null,
         disposedOn: null,
         assetNo: "",
-        category: "", // ラベルは保存時に currentCategory.label をセット
+        category: "", // 保存時に currentCategory.label を設定
         branchNo: "",
         deviceName: "",
         owner: "",
@@ -59,20 +66,24 @@ export const EquipmentCreateDialog: React.FC<Props> = ({ open, onClose, onCreate
         note: "",
         location: "",
         lastEditor: "",
-        // USBハブ初期値
         hdmi: "",
         usbA: "",
         usbC: "",
         lan: "",
         seqOrder: nextSeq,
+        seatNo: null, // ディスプレイの時は必須チェック対象（下の errors 参照）
       });
     }
   }, [open, nextSeq, currentCategory]);
 
-  const onChange = (key: keyof EquipmentDoc, value: string) => {
+  const onChange = (key: keyof EquipmentDoc, value: string | number | null) => {
     if (key === "seqOrder" || key === "category" || key === "assetNo") return;
-    if (key === "acceptedDate" || key === "updatedOn" || key === "confirmedOn" || key === "disposedOn") {
-      setForm((prev) => ({ ...prev, [key]: value ? ymdToTimestamp(value) : null }));
+    if (["acceptedDate", "updatedOn", "confirmedOn", "disposedOn"].includes(key)) {
+      setForm((prev) => ({ ...prev, [key]: value ? ymdToTimestamp(value as string) : null }));
+      return;
+    }
+    if (key === "seatNo") {
+      setForm((prev) => ({ ...prev, seatNo: value === "" || value == null ? null : Number(value) }));
       return;
     }
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -80,54 +91,41 @@ export const EquipmentCreateDialog: React.FC<Props> = ({ open, onClose, onCreate
 
   /** 必須チェック */
   const errors = useMemo(() => {
-    return {
+    const base = {
       acceptedDate: !form.acceptedDate, // 受付日 必須
       deviceName: !isNonEmpty(form.deviceName), // 機器名 必須
       owner: !isNonEmpty(form.owner), // 保有者 必須
       status: !isNonEmpty(form.status), // 状態 必須
       location: !isNonEmpty(form.location), // 所在地 必須
       lastEditor: !isNonEmpty(form.lastEditor), // 最終更新者 必須
-    };
-  }, [form.acceptedDate, form.deviceName, form.owner, form.status, form.location, form.lastEditor]);
+    } as Record<string, boolean>;
+
+    // ★ ディスプレイの時のみ座席番号を必須にする
+    if (isDisplay) {
+      base.seatNo = !(typeof form.seatNo === "number" && !Number.isNaN(form.seatNo));
+    }
+
+    return base;
+  }, [form, isDisplay]);
 
   const isValid = useMemo(() => Object.values(errors).every((v) => v === false), [errors]);
 
   const handleSave = async () => {
     if (!isValid) return;
-
-    // ★ タブで選択されたカテゴリcodeで採番
     const registeredAt = (form.acceptedDate as Timestamp).toDate();
     const assetNo = await generateEquipmentNo({ registeredAt, categoryCode: currentCategory.code });
 
     const payload: EquipmentDoc = {
       ...form,
       seqOrder: form.seqOrder ?? nextSeq,
-      category: currentCategory.label, // 保存するのはラベル（既存互換）
-      acceptedDate: form.acceptedDate ?? null,
-      updatedOn: form.updatedOn ?? null,
-      confirmedOn: form.confirmedOn ?? null,
-      disposedOn: form.disposedOn ?? null,
+      category: currentCategory.label, // 保存するのはラベル
       assetNo, // 自動採番
-      branchNo: (form.branchNo ?? "").trim(),
-      deviceName: (form.deviceName ?? "").trim(),
-      owner: form.owner ?? "",
-      status: form.status ?? "",
-      history: form.history ?? "",
-      note: form.note ?? "",
-      location: (form.location ?? "").trim(),
-      lastEditor: form.lastEditor ?? "",
-      // ★ USBハブ用
-      hdmi: form.hdmi ?? "",
-      usbA: form.usbA ?? "",
-      usbC: form.usbC ?? "",
-      lan: form.lan ?? "",
+      // seatNo はすでに number | null に正規化済み
     };
 
     await onCreate(payload);
     onClose();
   };
-
-  const isUsbHub = currentCategory?.label === "USBハブ";
 
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
@@ -150,20 +148,9 @@ export const EquipmentCreateDialog: React.FC<Props> = ({ open, onClose, onCreate
               helperText={errors.acceptedDate ? "必須です" : ""}
             />
 
-            <TextField
-              label="機器番号（保存時に自動採番）"
-              variant="standard"
-              size="small"
-              fullWidth
-              InputLabelProps={{ shrink: true }}
-              InputProps={{ readOnly: true }}
-              value={form.assetNo || ""}
-              placeholder="保存時に自動採番されます"
-            />
+            <TextField label="機器番号（自動採番）" variant="standard" size="small" fullWidth InputProps={{ readOnly: true }} value={form.assetNo || ""} placeholder="保存時に自動採番されます" />
 
-            {/* カテゴリ入力は出さない（タブで選択済み） */}
-
-            <TextField label="枝番" variant="standard" size="small" fullWidth InputLabelProps={{ shrink: true }} value={form.branchNo ?? ""} onChange={(e) => onChange("branchNo", e.target.value)} />
+            <TextField label="枝番" variant="standard" size="small" fullWidth value={form.branchNo ?? ""} onChange={(e) => onChange("branchNo", e.target.value)} />
 
             {/* 機器名（必須） */}
             <TextField
@@ -171,7 +158,6 @@ export const EquipmentCreateDialog: React.FC<Props> = ({ open, onClose, onCreate
               variant="standard"
               size="small"
               fullWidth
-              InputLabelProps={{ shrink: true }}
               value={form.deviceName ?? ""}
               onChange={(e) => onChange("deviceName", e.target.value)}
               error={errors.deviceName}
@@ -191,7 +177,6 @@ export const EquipmentCreateDialog: React.FC<Props> = ({ open, onClose, onCreate
               variant="standard"
               size="small"
               fullWidth
-              InputLabelProps={{ shrink: true }}
               value={form.owner ?? ""}
               onChange={(e) => onChange("owner", e.target.value)}
               error={errors.owner}
@@ -211,7 +196,6 @@ export const EquipmentCreateDialog: React.FC<Props> = ({ open, onClose, onCreate
               variant="standard"
               size="small"
               fullWidth
-              InputLabelProps={{ shrink: true }}
               value={form.status ?? ""}
               onChange={(e) => onChange("status", e.target.value)}
               error={errors.status}
@@ -224,9 +208,31 @@ export const EquipmentCreateDialog: React.FC<Props> = ({ open, onClose, onCreate
               ))}
             </TextField>
 
-            <TextField label="保有履歴" variant="standard" size="small" fullWidth InputLabelProps={{ shrink: true }} value={form.history ?? ""} onChange={(e) => onChange("history", e.target.value)} />
+            {/* 保有履歴 */}
+            <TextField label="保有履歴" variant="standard" size="small" fullWidth value={form.history ?? ""} onChange={(e) => onChange("history", e.target.value)} />
 
-            <TextField label="備考" variant="standard" size="small" fullWidth InputLabelProps={{ shrink: true }} value={form.note ?? ""} onChange={(e) => onChange("note", e.target.value)} />
+            {/* ★ 座席番号（ディスプレイのみ表示・必須） → 保有履歴の"次"に配置 */}
+            {isDisplay && (
+              <FormControl variant="standard" size="small" fullWidth error={Boolean(errors.seatNo)}>
+                <InputLabel shrink>座席番号</InputLabel>
+                <Select value={form.seatNo ?? ""} onChange={(e) => onChange("seatNo", e.target.value ? Number(e.target.value) : null)} displayEmpty>
+                  <MenuItem value="">未指定</MenuItem>
+                  {loading ? (
+                    <MenuItem disabled>読み込み中…</MenuItem>
+                  ) : (
+                    seats.map((s) => (
+                      <MenuItem key={s.id} value={s.number}>
+                        {s.label}
+                      </MenuItem>
+                    ))
+                  )}
+                </Select>
+                {errors.seatNo && <FormHelperText>ディスプレイは座席番号の指定が必須です</FormHelperText>}
+              </FormControl>
+            )}
+
+            {/* 備考 */}
+            <TextField label="備考" variant="standard" size="small" fullWidth value={form.note ?? ""} onChange={(e) => onChange("note", e.target.value)} />
 
             {/* 所在地（必須） */}
             <TextField
@@ -234,7 +240,6 @@ export const EquipmentCreateDialog: React.FC<Props> = ({ open, onClose, onCreate
               variant="standard"
               size="small"
               fullWidth
-              InputLabelProps={{ shrink: true }}
               value={form.location ?? ""}
               onChange={(e) => onChange("location", e.target.value)}
               error={errors.location}
@@ -248,7 +253,6 @@ export const EquipmentCreateDialog: React.FC<Props> = ({ open, onClose, onCreate
               variant="standard"
               size="small"
               fullWidth
-              InputLabelProps={{ shrink: true }}
               value={form.lastEditor ?? ""}
               onChange={(e) => onChange("lastEditor", e.target.value)}
               error={errors.lastEditor}
@@ -263,7 +267,7 @@ export const EquipmentCreateDialog: React.FC<Props> = ({ open, onClose, onCreate
 
             {/* ★ USBハブ専用フィールド */}
             {isUsbHub && (
-              <Stack direction="row" spacing={2} sx={{ mt: 0.5 }}>
+              <Stack direction="row" spacing={2}>
                 <TextField label="HDMI" variant="standard" size="small" value={form.hdmi ?? ""} onChange={(e) => onChange("hdmi", e.target.value)} />
                 <TextField label="USB A" variant="standard" size="small" value={form.usbA ?? ""} onChange={(e) => onChange("usbA", e.target.value)} />
                 <TextField label="USB C" variant="standard" size="small" value={form.usbC ?? ""} onChange={(e) => onChange("usbC", e.target.value)} />
