@@ -13,8 +13,8 @@ const {serverTimestamp, increment} = FieldValue;
 // params（.env）キー
 const EMAILJS_SERVICE_ID = defineString("EMAILJS_SERVICE_ID");
 const EMAILJS_TEMPLATE_ID = defineString("EMAILJS_TEMPLATE_ID");
-const EMAILJS_PRIVATE_KEY = defineString("EMAILJS_PRIVATE_KEY");
-const EMAILJS_PUBLIC_KEY = defineString("EMAILJS_PUBLIC_KEY");
+const EMAILJS_PRIVATE_KEY = defineString("EMAILJS_PRIVATE_KEY"); // ← Private Key
+const EMAILJS_PUBLIC_KEY = defineString("EMAILJS_PUBLIC_KEY"); // ← Public Key (user_id)
 const APPROVAL_BASE_URL = defineString("APPROVAL_BASE_URL");
 
 /** posts ドキュメントの最小型 */
@@ -34,19 +34,11 @@ type Post = {
   returnReminderSentAt?: FirebaseFirestore.Timestamp | FirebaseFirestore.FieldValue;
 };
 
-/**
- * JST の "YYYY-MM-DD" を返す。
- * @returns {string} 例: "2025-10-20"
- */
+/** JST の "YYYY-MM-DD" を返す。 */
 const todayJst = (): string => {
   const tz = "Asia/Tokyo";
   const now = new Date();
-  const parts = new Intl.DateTimeFormat("ja-JP", {
-    timeZone: tz,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(now);
+  const parts = new Intl.DateTimeFormat("ja-JP", {timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit"}).formatToParts(now);
 
   const y = parts.find((p) => p.type === "year")?.value ?? "1970";
   const m = parts.find((p) => p.type === "month")?.value ?? "01";
@@ -54,30 +46,33 @@ const todayJst = (): string => {
   return `${y}-${m}-${d}`;
 };
 
-/**
- * 返却承認が済んでいるか。
- * @param {Post} row 行データ
- * @returns {boolean} 承認済みなら true
- */
+/** 返却承認が済んでいるか。 */
 function isReturned(row: Post): boolean {
   const hasDate = !!(row.confirmationdate && String(row.confirmationdate).trim());
   const hasStamp = !!(row.confirmationstamp && String(row.confirmationstamp).trim());
   return hasDate || hasStamp;
 }
 
-/**
- * EmailJS (REST) でメール送信（サーバ to サーバ）。
- * @param {Record<string, unknown>} params テンプレ変数
- * @returns {Promise<void>} 送信完了
- */
+/** 必須パラメータ存在チェック（起動時1回分） */
+function checkEnvOnce(): { ok: boolean; miss: string[] } {
+  const miss: string[] = [];
+  if (!EMAILJS_SERVICE_ID.value()) miss.push("EMAILJS_SERVICE_ID");
+  if (!EMAILJS_TEMPLATE_ID.value()) miss.push("EMAILJS_TEMPLATE_ID");
+  if (!EMAILJS_PUBLIC_KEY.value()) miss.push("EMAILJS_PUBLIC_KEY (user_id / Public Key)");
+  if (!EMAILJS_PRIVATE_KEY.value()) miss.push("EMAILJS_PRIVATE_KEY (accessToken / Private Key)");
+  if (!APPROVAL_BASE_URL.value()) miss.push("APPROVAL_BASE_URL");
+  return {ok: miss.length === 0, miss};
+}
+
+/** EmailJS (REST) でメール送信（サーバ to サーバ）。 */
 async function sendEmailWithEmailJS(params: Record<string, unknown>): Promise<void> {
   const url = "https://api.emailjs.com/api/v1.0/email/send";
   const body = {
     service_id: EMAILJS_SERVICE_ID.value(),
     template_id: EMAILJS_TEMPLATE_ID.value(),
-    // ← ここを 'user_id' に。値は Public Key
+    // 重要：Public Key は user_id フィールド名で送る
     user_id: EMAILJS_PUBLIC_KEY.value(),
-    // Private Key は accessToken で併用（サーバー間送信）
+    // サーバー（非ブラウザ）利用は Private Key を accessToken で同梱
     accessToken: EMAILJS_PRIVATE_KEY.value(),
     template_params: params,
   };
@@ -94,10 +89,7 @@ async function sendEmailWithEmailJS(params: Record<string, unknown>): Promise<vo
   }
 }
 
-/**
- * 返却リマインド対象（未返却・未リマインド・期日到達）を取得。
- * @returns {Promise<Post[]>} 対象配列
- */
+/** 返却リマインド対象（未返却・未リマインド・期日到達）を取得。 */
 async function findTargets(): Promise<Post[]> {
   const today = todayJst(); // "YYYY-MM-DD"
 
@@ -117,18 +109,17 @@ async function findTargets(): Promise<Post[]> {
   return targets;
 }
 
-/**
- * スケジュール実行（毎日 14:10 JST）で返却案内を送信。
- */
+/** スケジュール実行（毎日 14:50 JST）で返却案内を送信。 */
 export const remindReturnIfDue = onSchedule(
   {
-    schedule: "50 14 * * *",
+    schedule: "30 15 * * *",
     timeZone: "Asia/Tokyo",
     retryCount: 3,
   },
   async () => {
     try {
-      // パラメータの存在だけログ（値は出さない）
+      // 1) .env が揃っているか
+      const env = checkEnvOnce();
       console.log("[remind] params:", {
         SERVICE: !!EMAILJS_SERVICE_ID.value(),
         TEMPLATE: !!EMAILJS_TEMPLATE_ID.value(),
@@ -136,24 +127,35 @@ export const remindReturnIfDue = onSchedule(
         KEY: !!EMAILJS_PRIVATE_KEY.value(),
         BASE_URL: !!APPROVAL_BASE_URL.value(),
       });
+      if (!env.ok) {
+        console.error("[remind] missing env:", env.miss);
+        return; // 送信処理に進まない
+      }
 
+      // 2) 対象抽出
       const today = todayJst();
       const targets = await findTargets();
-
       console.log("[remind] start", {date: today, count: targets.length});
-
       if (!targets.length) {
         console.log("[remind] no targets; exit normally");
         return;
       }
 
+      // 3) 送信ループ
       const batch = db.batch();
       let ok = 0;
       let ng = 0;
 
       for (const row of targets) {
-        const email = row.requestedBy as string;
-        const link = APPROVAL_BASE_URL.value();
+        const email = (row.requestedBy || "").trim();
+        const link = (APPROVAL_BASE_URL.value() || "").trim();
+
+        // 最低限のテンプレ必須値
+        if (!email || !link) {
+          ng++;
+          console.warn("[remind] skip (missing to_email/link):", row.id, {email, link});
+          continue;
+        }
 
         const templateParams = {
           to_email: email,
@@ -190,6 +192,7 @@ export const remindReturnIfDue = onSchedule(
         }
       }
 
+      // 4) フラグ更新コミット
       await batch.commit();
       console.log("[remind] finished.", {ok, ng});
       // 例外を投げない → Scheduler から成功扱い
