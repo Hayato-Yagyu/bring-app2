@@ -368,20 +368,14 @@ export const ServerRoomDiagramDialog: React.FC<Props> = ({ open, onClose, equipm
     ? "割り当てる機器（assetNo／L2スイッチ・ハブのみ）"
     : "割り当てる機器（assetNo／サーバーのみ）";
 
-  const noOptionsText = isRouterSlot(activeSlotId)
-    ? "ルーターが見つかりません"
-    : isHubSlot(activeSlotId)
-    ? "USBハブが見つかりません"
-    : isL2HubSlot(activeSlotId)
-    ? "L2スイッチ・ハブが見つかりません"
-    : "サーバーが見つかりません";
+  const noOptionsText = isRouterSlot(activeSlotId) ? "ルーターが見つかりません" : isHubSlot(activeSlotId) ? "USBハブが見つかりません" : isL2HubSlot(activeSlotId) ? "L2スイッチ・ハブが見つかりません" : "サーバーが見つかりません";
 
   const placeholder = "assetNo を選択";
 
   return (
     <>
       <Dialog open={open} onClose={onClose} fullWidth maxWidth="xl">
-        <DialogTitle>サーバ室（正面＋左面／幅と間隔を統一）</DialogTitle>
+        <DialogTitle>サーバ室</DialogTitle>
         <DialogContent dividers sx={{ pt: 1, overflowX: "hidden", overflowY: "auto" }}>
           {loading ? (
             <Box display="flex" alignItems="center" justifyContent="center" minHeight={240}>

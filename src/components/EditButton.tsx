@@ -1,29 +1,59 @@
+// src/components/EditButton.tsx
 import React, { useState } from "react";
 import { Button, IconButton, Tooltip, Modal, TextField, Box, MenuItem, InputLabel, FormControl, Select } from "@mui/material";
+import type { SelectChangeEvent } from "@mui/material/Select";
 import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
-import Applicant from "./Applicant";
 import Where from "./Where";
 import ApprovalRequestDialog from "./ApprovalRequestDialog";
 
 // Firestore
 import { db } from "../firebase";
-import { doc, updateDoc, collection, getDocs } from "firebase/firestore";
+import { doc, updateDoc, collection, getDocs, getDoc, query, where } from "firebase/firestore";
 
-// ★ 追加：EmailJS
+// EmailJS（※ init は lib ラッパー推奨。既存のまま利用）
 import emailjs from "@emailjs/browser";
 
-// EmailJS（あなたの環境に合わせて保持）
+// EmailJS
 const EMAILJS_SERVICE_ID = "service_0sslyge";
 const TEMPLATE_CHANGE_ID = "template_81c28kt"; // 変更申請（承認者向け）
 const TEMPLATE_RETURN_ID = "template_81c28kt"; // 返却申請
-// ★ 申請者控え（変更内容のお知らせ）も同じテンプレを使う想定。分けたい場合は別IDを定義してください。
 const TEMPLATE_CHANGE_NOTICE_TO_APPLICANT = TEMPLATE_CHANGE_ID;
 
-export const EditButton = ({ rowData, setSharedState, disabled, icon = false }) => {
+/** posts の1行分（必要フィールドのみ） */
+export type RowData = {
+  id: string;
+  applicant?: string;
+  applicantId?: string;
+  applicantdate?: string;
+  classification?: string;
+  periodfrom?: string;
+  periodto?: string;
+  where?: string;
+  materials?: string; // 設備名
+  media?: string; // 設備番号
+  mediaRaw?: string;
+  permitdate?: string;
+  permitstamp?: string;
+  confirmationdate?: string;
+  confirmationstamp?: string;
+  requestedBy?: string; // 申請者メール
+  [key: string]: any; // 他にも色々来るので逃げ道を残す
+};
+
+type Props = {
+  rowData: RowData;
+  setSharedState?: (rows: RowData[]) => void;
+  disabled?: boolean;
+  icon?: boolean;
+};
+
+const EQUIP_OPTIONS = ["PC", "スマートフォン", "USBメモリ", "外付けHDD", "その他"];
+
+export const EditButton: React.FC<Props> = ({ rowData, setSharedState, disabled, icon = false }) => {
   const [open, setOpen] = useState(false);
 
   // 画面バインド用（UI形）
-  const [formData, setFormData] = useState({});
+  const [formData, setFormData] = useState<RowData>({ ...rowData });
 
   // where=その他 の自由入力
   const [otherInput, setOtherInput] = useState("");
@@ -31,7 +61,7 @@ export const EditButton = ({ rowData, setSharedState, disabled, icon = false }) 
   // 設備=その他 の自由入力
   const [mediaOther, setMediaOther] = useState("");
 
-  // ★ 追加：変更内容コメント
+  // 変更内容コメント
   const [changeNote, setChangeNote] = useState("");
 
   // 申請ダイアログ制御
@@ -41,22 +71,65 @@ export const EditButton = ({ rowData, setSharedState, disabled, icon = false }) 
   // 進行中フラグ（連打防止）
   const [saving, setSaving] = useState(false);
 
-  const EQUIP_OPTIONS = ["PC", "スマートフォン", "USBメモリ", "外付けHDD", "その他"];
+  // 表示専用：解決済みの申請者名
+  const [applicantResolved, setApplicantResolved] = useState("");
 
-  const handleOpen = () => {
+  // ----- 申請者名の解決 -----
+  const resolveApplicantName = async (initial: RowData) => {
+    const direct = (initial?.applicant ?? "").toString().trim();
+    if (direct) {
+      setApplicantResolved(direct);
+      return;
+    }
+    const uid = (initial?.applicantId ?? "").toString().trim();
+    if (!uid) {
+      setApplicantResolved("");
+      return;
+    }
+    let name = "";
+    try {
+      // users/{uid}
+      try {
+        const snap = await getDoc(doc(db, "users", uid));
+        if (snap.exists()) {
+          const d = (snap.data() ?? {}) as any;
+          name = String(d.displayName ?? d.name ?? d.fullName ?? "").trim();
+        }
+      } catch {
+        /* noop */
+      }
+      // users.where("id","==", uid)
+      if (!name) {
+        try {
+          const qs = await getDocs(query(collection(db, "users"), where("id", "==", uid)));
+          if (!qs.empty) {
+            const d = (qs.docs[0].data() ?? {}) as any;
+            name = String(d.displayName ?? d.name ?? d.fullName ?? "").trim();
+          }
+        } catch {
+          /* noop */
+        }
+      }
+      setApplicantResolved(name);
+    } catch {
+      setApplicantResolved("");
+    }
+  };
+
+  const handleOpen = async () => {
     // DB→UI 変換
-    const dbEquipName = (rowData && rowData.materials) || "";
-    const dbEquipNo = (rowData && rowData.media) || "";
-    const dbWhere = (rowData && rowData.where) || "";
+    const dbEquipName = rowData?.materials || "";
+    const dbEquipNo = rowData?.media || "";
+    const dbWhere = rowData?.where || "";
 
     const uiEquipValue = EQUIP_OPTIONS.includes(dbEquipName) ? dbEquipName : "その他";
     const uiMediaOther = EQUIP_OPTIONS.includes(dbEquipName) ? "" : dbEquipName;
 
-    const whereOptions = Array.isArray(Where) ? Where : [];
+    const whereOptions: string[] = Array.isArray(Where) ? (Where as string[]) : [];
     const uiWhereValue = whereOptions.includes(dbWhere) ? dbWhere : "その他";
     const uiOtherInput = whereOptions.includes(dbWhere) ? "" : dbWhere;
 
-    const ui = {
+    const ui: RowData = {
       ...rowData,
       media: uiEquipValue, // 設備（Select）
       materials: dbEquipNo, // 設備番号（TextField）
@@ -66,31 +139,39 @@ export const EditButton = ({ rowData, setSharedState, disabled, icon = false }) 
     setMediaOther(uiMediaOther);
     setOtherInput(uiOtherInput);
     setFormData(ui);
-    setChangeNote(""); // ★ 開くたびに初期化
+    setChangeNote(""); // 開くたびに初期化
+    await resolveApplicantName(rowData);
     setOpen(true);
   };
 
   const handleClose = () => setOpen(false);
 
-  const handleInputChange = (e) => {
-    const { name, value } = e.target;
+  // 入力系（TextField）
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement> | SelectChangeEvent<string>) => {
+    const name = (e.target as HTMLInputElement).name as keyof RowData;
+    const value = (e.target as HTMLInputElement).value;
+
     if (name === "media" && value !== "その他") setMediaOther("");
     if (name === "where" && value !== "その他") setOtherInput("");
+
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleOtherWhereInputChange = (e) => setOtherInput(e.target.value);
-  const handleMediaOtherChange = (e) => setMediaOther(e.target.value);
-  const handleChangeNoteChange = (e) => setChangeNote(e.target.value);
+  const handleOtherWhereInputChange = (e: React.ChangeEvent<HTMLInputElement>) => setOtherInput(e.target.value);
 
-  // UI→DB 正規化（保存用 payload を作る）
+  const handleMediaOtherChange = (e: React.ChangeEvent<HTMLInputElement>) => setMediaOther(e.target.value);
+
+  const handleChangeNoteChange = (e: React.ChangeEvent<HTMLInputElement>) => setChangeNote(e.target.value);
+
+  // UI→DB 正規化（保存用 payload）
   const buildDbPayload = () => {
     const {
       id,
       media: uiEquip,
       materials: uiEquipNo,
       where: uiWhere,
-      // 表示のみ4項目は除外してDB上書きしない
+      // --- DBに書き戻さないフィールドを除外 ---
+      applicant, // 申請者は更新しない
       permitdate,
       permitstamp,
       confirmationdate,
@@ -98,34 +179,35 @@ export const EditButton = ({ rowData, setSharedState, disabled, icon = false }) 
       ...restEditable
     } = formData;
 
-    const equipNameToSave = uiEquip === "その他" ? (mediaOther || "").trim() : uiEquip; // DB materials（設備名）
-    const equipNoToSave = uiEquipNo || ""; // DB media（設備番号）
-    const whereToSave = uiWhere === "その他" ? (otherInput || "").trim() : uiWhere; // DB where
+    const equipNameToSave = uiEquip === "その他" ? mediaOther.trim() : uiEquip || "";
+    const equipNoToSave = uiEquipNo || "";
+    const whereToSave = uiWhere === "その他" ? otherInput.trim() : uiWhere || "";
 
     return {
-      id: id || (rowData && rowData.id),
+      id: id || rowData?.id,
       payload: {
         ...restEditable,
-        materials: equipNameToSave,
-        media: equipNoToSave,
+        materials: equipNameToSave, // 設備名
+        media: equipNoToSave, // 設備番号
         where: whereToSave,
+        // applicant は触らない
       },
     };
   };
 
   // 承認メールへ渡すデータ（UI→DB 正規化）
-  const buildRowDataForMail = () => {
+  const buildRowDataForMail = (): RowData => {
     const { media: uiEquip, materials: uiEquipNo, where: uiWhere, ...rest } = formData;
-    const equipName = uiEquip === "その他" ? (mediaOther || "").trim() : uiEquip; // 設備名
-    const equipNo = uiEquipNo || ""; // 設備番号
-    const whereVal = uiWhere === "その他" ? (otherInput || "").trim() : uiWhere; // 持込・持出先
+    const equipName = uiEquip === "その他" ? mediaOther.trim() : uiEquip || "";
+    const equipNo = uiEquipNo || "";
+    const whereVal = uiWhere === "その他" ? otherInput.trim() : uiWhere || "";
     return {
       ...rowData,
       ...rest,
       materials: equipName,
       media: equipNo,
       where: whereVal,
-      // ★ 変更内容コメントも承認者向けテンプレに渡す
+      applicant: applicantResolved || rowData?.applicant || "",
       change_note: changeNote,
     };
   };
@@ -137,13 +219,13 @@ export const EditButton = ({ rowData, setSharedState, disabled, icon = false }) 
     setOpen(false);
   };
 
-  // ★ 申請者（requestedBy）へ変更内容コメントを送る
-  const notifyApplicantOfChange = async (rowId, mergedForMail) => {
-    const toEmail = (rowData && rowData.requestedBy) || ""; // 申請者メール
-    if (!toEmail) return; // 無ければスキップ（旧データ対策）
+  // 申請者（requestedBy）へ変更内容コメントを送る
+  const notifyApplicantOfChange = async (rowId: string, mergedForMail: RowData) => {
+    const toEmail = rowData?.requestedBy || ""; // 申請者メール
+    if (!toEmail) return; // 旧データ対策
 
-    const toName = (rowData && rowData.applicant) || "申請者さま";
-    const emailHtml = "https://kdsbring.netlify.app/"; // 任意の参照ページ
+    const toName = applicantResolved || rowData?.applicant || "申請者さま";
+    const emailHtml = "https://kdsbring.netlify.app/"; // 任意
 
     const params = {
       to_name: toName,
@@ -158,43 +240,42 @@ export const EditButton = ({ rowData, setSharedState, disabled, icon = false }) 
       materials: mergedForMail.materials || "",
       media: mergedForMail.media || "",
       link: emailHtml,
-
-      // ★ 変更内容コメント
       change_note: changeNote || "",
-      // 任意：件名や本文で識別しやすいよう追情報
       purpose: "変更内容のお知らせ（申請者控え）",
       action: "変更",
     };
 
-    // 送信（EmailJS SDK）
     await emailjs.send(EMAILJS_SERVICE_ID, TEMPLATE_CHANGE_NOTICE_TO_APPLICANT, params);
   };
 
-  // 変更申請：まずDB保存→（成功時）承認者宛ダイアログを開く＋申請者へ通知
+  // 変更申請：まずDB保存→承認者宛ダイアログを開く＋申請者へ通知
   const handleChangeApply = async () => {
     if (saving) return;
     const { id, payload } = buildDbPayload();
     if (!id) {
       console.error("ドキュメントIDが取得できませんでした。");
-      setChangeOpen(true); // それでも承認者向けメールは出すなら
+      setChangeOpen(true);
       return;
     }
     try {
       setSaving(true);
       await updateDoc(doc(db, "posts", id), payload);
 
-      // 一覧再読込（親から関数が渡されている場合のみ）
+      // 一覧再読込
       if (typeof setSharedState === "function") {
         const snap = await getDocs(collection(db, "posts"));
-        const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        const rows: RowData[] = snap.docs.map((d) => ({
+          id: d.id,
+          ...(d.data() as any),
+        }));
         setSharedState(rows);
       }
 
-      // ★ 申請者へ「変更内容コメント」を通知
+      // 申請者へ通知
       const mergedForMail = buildRowDataForMail();
       await notifyApplicantOfChange(id, mergedForMail);
 
-      // DB反映後の値で承認者向けメールを出すため、承認ダイアログを開く
+      // 承認者向けメール用ダイアログ
       setChangeOpen(true);
     } catch (e) {
       console.error("変更申請の保存に失敗:", e);
@@ -203,8 +284,8 @@ export const EditButton = ({ rowData, setSharedState, disabled, icon = false }) 
     }
   };
 
-  // ApprovalRequestDialog に渡す共通パラメータ組立（JSだけ）
-  const buildTemplateParams = ({ rowId, rowData, approver, user, mode }) => {
+  // ApprovalRequestDialog に渡す共通パラメータ組立
+  const buildTemplateParams = ({ rowId, rowData, approver, user, mode }: any) => {
     const emailHtml = "https://kdsbring.netlify.app/"; // 承認URL
     return {
       // 宛先（承認者）
@@ -212,33 +293,32 @@ export const EditButton = ({ rowData, setSharedState, disabled, icon = false }) 
       to_email: approver.email,
 
       // 依頼者
-      from_email: (user && user.email) || (rowData && rowData.applicant) || "",
+      from_email: (user && user.email) || (rowData && rowData.requestedBy) || "",
       reply_to: (user && user.email) || "",
 
       // 申請内容
       id: rowId,
       applicantdate: (rowData && rowData.applicantdate) || "",
-      applicant: (rowData && rowData.applicant) || "",
+      applicant: applicantResolved || (rowData && rowData.applicant) || "",
       classification: (rowData && rowData.classification) || "",
       periodfrom: (rowData && rowData.periodfrom) || "",
       periodto: (rowData && rowData.periodto) || "",
       where: (rowData && rowData.where) || "",
-      materials: (rowData && rowData.materials) || "", // 設備名
-      media: (rowData && rowData.media) || "", // 設備番号
+      materials: (rowData && rowData.materials) || "",
+      media: (rowData && rowData.media) || "",
       link: emailHtml,
 
-      // 任意：テンプレ用
       purpose: mode === "change" ? "変更申請" : "返却申請",
       action: mode === "change" ? "変更" : "返却",
 
-      // ★ 承認者にもコメント共有したい場合
-      change_note: (rowData && rowData.change_note) || "",
+      // 承認者にもコメント共有
+      change_note: (rowData && rowData.change_note) || changeNote || "",
     };
   };
 
-  const whereOptions = Array.isArray(Where) ? Where : [];
+  const whereOptions: string[] = Array.isArray(Where) ? (Where as string[]) : [];
 
-  // ★★★ ここがポイント：登録承認（permitdate & permitstamp）が揃っているか判定
+  // 登録承認（permitdate & permitstamp）が揃っているか
   const isReturnAllowed = Boolean((formData?.permitdate || "").trim() && (formData?.permitstamp || "").trim());
 
   return (
@@ -278,31 +358,10 @@ export const EditButton = ({ rowData, setSharedState, disabled, icon = false }) 
               "& .MuiTextField-root, & .MuiFormControl-root": { mb: 0 },
             }}
           >
-            <TextField
-              name="applicantdate"
-              label="申請日"
-              value={formData.applicantdate || ""}
-              onChange={handleInputChange}
-              type="date"
-              fullWidth
-              variant="standard"
-              size="small"
-              InputLabelProps={{ shrink: true }}
-            />
-            <FormControl fullWidth variant="standard" size="small">
-              <InputLabel id="applicant-label" shrink>
-                申請者
-              </InputLabel>
-              <Select labelId="applicant-label" name="applicant" value={formData.applicant || ""} onChange={handleInputChange} label="申請者">
-                {Array.isArray(Applicant)
-                  ? Applicant.map((item, index) => (
-                      <MenuItem key={index} value={item}>
-                        {item}
-                      </MenuItem>
-                    ))
-                  : null}
-              </Select>
-            </FormControl>
+            <TextField name="applicantdate" label="申請日" value={formData.applicantdate || ""} onChange={handleInputChange} type="date" fullWidth variant="standard" size="small" InputLabelProps={{ shrink: true }} />
+
+            {/* 申請者は読み取り専用 */}
+            <TextField label="申請者" value={applicantResolved || ""} fullWidth variant="standard" size="small" InputLabelProps={{ shrink: true }} InputProps={{ readOnly: true }} />
 
             <FormControl fullWidth variant="standard" size="small">
               <InputLabel id="classification-label" shrink>
@@ -324,72 +383,33 @@ export const EditButton = ({ rowData, setSharedState, disabled, icon = false }) 
                     {item}
                   </MenuItem>
                 ))}
+                <MenuItem value="その他">その他</MenuItem>
               </Select>
             </FormControl>
 
             {formData.where === "その他" && (
-              <TextField
-                label="持込・持出先（その他の内容）"
-                value={otherInput}
-                onChange={handleOtherWhereInputChange}
-                fullWidth
-                variant="standard"
-                size="small"
-                InputLabelProps={{ shrink: true }}
-                sx={{ gridColumn: "1 / -1" }}
-              />
+              <TextField label="持込・持出先（その他の内容）" value={otherInput} onChange={handleOtherWhereInputChange} fullWidth variant="standard" size="small" InputLabelProps={{ shrink: true }} sx={{ gridColumn: "1 / -1" }} />
             )}
 
-            <TextField
-              name="periodfrom"
-              label="持込・持出日 から"
-              value={formData.periodfrom || ""}
-              onChange={handleInputChange}
-              type="date"
-              fullWidth
-              variant="standard"
-              size="small"
-              InputLabelProps={{ shrink: true }}
-            />
-            <TextField
-              name="periodto"
-              label="持込・持出日 まで"
-              value={formData.periodto || ""}
-              onChange={handleInputChange}
-              type="date"
-              fullWidth
-              variant="standard"
-              size="small"
-              InputLabelProps={{ shrink: true }}
-            />
+            <TextField name="periodfrom" label="持込・持出日 から" value={formData.periodfrom || ""} onChange={handleInputChange} type="date" fullWidth variant="standard" size="small" InputLabelProps={{ shrink: true }} />
+            <TextField name="periodto" label="持込・持出日 まで" value={formData.periodto || ""} onChange={handleInputChange} type="date" fullWidth variant="standard" size="small" InputLabelProps={{ shrink: true }} />
 
             <FormControl fullWidth variant="standard" size="small">
               <InputLabel id="media-label" shrink>
                 設備
               </InputLabel>
               <Select labelId="media-label" name="media" value={formData.media || ""} onChange={handleInputChange} label="設備">
-                <MenuItem value="PC">PC</MenuItem>
-                <MenuItem value="スマートフォン">スマートフォン</MenuItem>
-                <MenuItem value="USBメモリ">USBメモリ</MenuItem>
-                <MenuItem value="外付けHDD">外付けHDD</MenuItem>
-                <MenuItem value="その他">その他</MenuItem>
+                {EQUIP_OPTIONS.map((opt) => (
+                  <MenuItem key={opt} value={opt}>
+                    {opt}
+                  </MenuItem>
+                ))}
               </Select>
             </FormControl>
 
             <TextField name="materials" label="設備番号" value={formData.materials || ""} onChange={handleInputChange} fullWidth variant="standard" size="small" InputLabelProps={{ shrink: true }} />
 
-            {formData.media === "その他" && (
-              <TextField
-                label="設備（その他の内容）"
-                value={mediaOther}
-                onChange={handleMediaOtherChange}
-                fullWidth
-                variant="standard"
-                size="small"
-                InputLabelProps={{ shrink: true }}
-                sx={{ gridColumn: "1 / -1" }}
-              />
-            )}
+            {formData.media === "その他" && <TextField label="設備（その他の内容）" value={mediaOther} onChange={handleMediaOtherChange} fullWidth variant="standard" size="small" InputLabelProps={{ shrink: true }} sx={{ gridColumn: "1 / -1" }} />}
 
             {/* 表示のみ 4項目（編集不可） */}
             <TextField label="登録承認日付" value={formData.permitdate || ""} fullWidth variant="standard" size="small" InputLabelProps={{ shrink: true }} InputProps={{ readOnly: true }} />
@@ -397,23 +417,11 @@ export const EditButton = ({ rowData, setSharedState, disabled, icon = false }) 
             <TextField label="返却承認日付" value={formData.confirmationdate || ""} fullWidth variant="standard" size="small" InputLabelProps={{ shrink: true }} InputProps={{ readOnly: true }} />
             <TextField label="承認者" value={formData.confirmationstamp || ""} fullWidth variant="standard" size="small" InputLabelProps={{ shrink: true }} InputProps={{ readOnly: true }} />
 
-            {/* ★ 追加：変更内容コメント（申請者へ送付＆承認者にも共有可） */}
-            <TextField
-              label="変更内容（コメント）"
-              value={changeNote}
-              onChange={handleChangeNoteChange}
-              fullWidth
-              variant="standard"
-              size="small"
-              InputLabelProps={{ shrink: true }}
-              multiline
-              minRows={2}
-              maxRows={6}
-              sx={{ gridColumn: "1 / -1" }}
-            />
+            {/* 変更内容コメント */}
+            <TextField label="変更内容（コメント）" value={changeNote} onChange={handleChangeNoteChange} fullWidth variant="standard" size="small" InputLabelProps={{ shrink: true }} multiline minRows={2} maxRows={6} sx={{ gridColumn: "1 / -1" }} />
           </Box>
 
-          {/* ボタン行：キャンセル / 変更申請 / 返却申請 */}
+          {/* ボタン行 */}
           <Box sx={{ display: "flex", justifyContent: "flex-end", mt: 2, gap: 1 }}>
             <Button variant="outlined" color="primary" onClick={handleClose} sx={{ width: 140 }}>
               キャンセル
@@ -422,7 +430,7 @@ export const EditButton = ({ rowData, setSharedState, disabled, icon = false }) 
               {saving ? "保存中..." : "変更申請"}
             </Button>
 
-            {/* ★ 返却申請は登録承認済み（permitdate & permitstamp）でないと押せない */}
+            {/* 返却申請は登録承認済み（permitdate & permitstamp）でないと押せない */}
             <Tooltip title={isReturnAllowed ? "" : "登録承認（承認日付・承認者）が未登録のため返却申請できません"} arrow>
               <span>
                 <Button variant="contained" color="primary" onClick={() => isReturnAllowed && setReturnOpen(true)} sx={{ width: 140 }} disabled={!isReturnAllowed}>
@@ -442,8 +450,8 @@ export const EditButton = ({ rowData, setSharedState, disabled, icon = false }) 
         mode="change"
         serviceId={EMAILJS_SERVICE_ID}
         templateId={TEMPLATE_CHANGE_ID}
-        rowId={(formData && formData.id) || (rowData && rowData.id)}
-        rowData={buildRowDataForMail()} // ★ change_note を含む
+        rowId={formData?.id || rowData?.id}
+        rowData={buildRowDataForMail()}
         buildTemplateParams={buildTemplateParams}
       />
 
@@ -455,8 +463,8 @@ export const EditButton = ({ rowData, setSharedState, disabled, icon = false }) 
         mode="return"
         serviceId={EMAILJS_SERVICE_ID}
         templateId={TEMPLATE_RETURN_ID}
-        rowId={(formData && formData.id) || (rowData && rowData.id)}
-        rowData={buildRowDataForMail()} // （change_note は返却では未使用でもOK）
+        rowId={formData?.id || rowData?.id}
+        rowData={buildRowDataForMail()}
         buildTemplateParams={buildTemplateParams}
       />
     </div>

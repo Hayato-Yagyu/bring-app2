@@ -5,67 +5,60 @@ import { Tooltip, IconButton, ButtonGroup, Box } from "@mui/material";
 import { useNavigate } from "react-router-dom";
 import LogoutIcon from "@mui/icons-material/Logout";
 import PersonAddAlt1Icon from "@mui/icons-material/PersonAddAlt1";
-import ListAltIcon from "@mui/icons-material/ListAlt"; // BringList へ
-import DevicesOtherIcon from "@mui/icons-material/DevicesOther"; // 機器台帳管理
-import ApprovalsInboxButton from "./ApprovalsInboxButton"; // 承認バッジボタン
+import ListAltIcon from "@mui/icons-material/ListAlt";
+import DevicesOtherIcon from "@mui/icons-material/DevicesOther";
+import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
+import ApprovalsInboxButton from "./ApprovalsInboxButton";
 
-// ユーザ情報と Firestore
 import { useEffect, useState } from "react";
 import { useUser } from "./UserContext";
 import { db } from "../firebase";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 
+// ▼ 追加：分離したダイアログ
+import VersionDialog from "./VersionDialog";
+
 export const Menu: React.FC = () => {
   const navigate = useNavigate();
 
-  // ログインユーザ
   const { user } = useUser();
   const userEmail = (user?.email ?? "").trim();
 
-  // 権限フラグ
-  const [isSupervisor, setIsSupervisor] = useState(false); // supervising_responsible
-  const [canManageEquipment, setCanManageEquipment] = useState(false); // equipmentManagement || supervising_responsible
+  const [isSupervisor, setIsSupervisor] = useState(false);
 
-  // users コレクションから権限をリアルタイム購読
+  // ▼ バージョンダイアログ制御
+  const [openVersion, setOpenVersion] = useState(false);
+  const handleOpenVersion = () => setOpenVersion(true);
+  const handleCloseVersion = () => setOpenVersion(false);
+
   useEffect(() => {
-    // 未ログイン時は非表示
     if (!userEmail) {
       setIsSupervisor(false);
-      setCanManageEquipment(false);
       return;
     }
 
     const usersRef = collection(db, "users");
-    // ★ email 完全一致で全件購読（limit(1)は付けない）
     const q = query(usersRef, where("email", "==", userEmail));
 
     const unsub = onSnapshot(
       q,
       (snap) => {
-        // 同一メールの複数ドキュメントを集計して OR 判定
         let supervisor = false;
-        let equip = false;
-
         snap.docs.forEach((d) => {
-          const v = d.data() as { supervising_responsible?: boolean; equipmentManagement?: boolean };
+          const v = d.data() as { supervising_responsible?: boolean };
           if (v?.supervising_responsible) supervisor = true;
-          if (v?.equipmentManagement) equip = true;
         });
-
         setIsSupervisor(supervisor);
-        setCanManageEquipment(supervisor || equip);
       },
       (err) => {
         console.error("users load error:", err);
         setIsSupervisor(false);
-        setCanManageEquipment(false);
       }
     );
 
     return () => unsub();
   }, [userEmail]);
 
-  // ルーティング
   const handleLogin = () => navigate("/");
   const handleLogoClick = () => navigate("/BringList");
   const handleUserMgmt = () => navigate("/users");
@@ -99,13 +92,14 @@ export const Menu: React.FC = () => {
 
           {/* 右：アイコン群 */}
           <ButtonGroup size="large" aria-label="Large button group">
+            {/* 一覧 */}
             <Tooltip title="媒体等持込持出一覧" arrow>
               <IconButton onClick={handleLogoClick} color="inherit" aria-label="媒体等持込持出一覧">
                 <ListAltIcon />
               </IconButton>
             </Tooltip>
 
-            {/* supervising_responsible = true のときだけ表示：ユーザ管理 */}
+            {/* ユーザ管理（責任者のみ表示） */}
             {isSupervisor && (
               <Tooltip title="ユーザ管理" arrow>
                 <IconButton onClick={handleUserMgmt} color="inherit" aria-label="ユーザ管理">
@@ -114,18 +108,24 @@ export const Menu: React.FC = () => {
               </Tooltip>
             )}
 
-            {/* ★ 追加：ユーザ管理の次に表示（equipmentManagement または supervising_responsible が true） */}
-            {canManageEquipment && (
-              <Tooltip title="機器台帳管理" arrow>
-                <IconButton onClick={handleEquipmentMgmt} color="inherit" aria-label="機器台帳管理">
-                  <DevicesOtherIcon />
-                </IconButton>
-              </Tooltip>
-            )}
+            {/* 機器台帳管理（全員に表示） */}
+            <Tooltip title="機器台帳管理" arrow>
+              <IconButton onClick={handleEquipmentMgmt} color="inherit" aria-label="機器台帳管理">
+                <DevicesOtherIcon />
+              </IconButton>
+            </Tooltip>
 
-            {/* supervising_responsible = true のときだけ承認バッジを表示 */}
+            {/* バージョン表示（別コンポーネントのダイアログを開く） */}
+            <Tooltip title="バージョン履歴" arrow>
+              <IconButton onClick={handleOpenVersion} color="inherit" aria-label="バージョン履歴">
+                <InfoOutlinedIcon />
+              </IconButton>
+            </Tooltip>
+
+            {/* 承認バッジ（責任者のみ表示） */}
             {isSupervisor && <ApprovalsInboxButton />}
 
+            {/* ログアウト */}
             <Tooltip title="ログアウト" arrow>
               <IconButton onClick={handleLogin} color="inherit" aria-label="ログアウト">
                 <LogoutIcon />
@@ -134,6 +134,10 @@ export const Menu: React.FC = () => {
           </ButtonGroup>
         </Box>
       </StyledBox>
+
+      {/* ▼ 分離したダイアログ */}
+      <VersionDialog open={openVersion} onClose={handleCloseVersion} />
+
       <br />
     </>
   );
