@@ -381,7 +381,7 @@ export const EditButton: React.FC<Props> = ({ rowData, setSharedState, disabled,
       link: emailHtml,
 
       purpose: mode === "change" ? "変更申請" : "返却申請",
-      action: mode === "change" ? "変更" : "返却",
+      action: mode === "change" ? "承認依頼（変更申請）" : "承認依頼（返却申請）",
 
       // 承認者にもコメント共有
       change_note: (rowData && rowData.change_note) || changeNote || "",

@@ -2,7 +2,7 @@
 import React, { SetStateAction, useEffect, useMemo, useState } from "react";
 import { Dialog, DialogTitle, DialogContent, DialogActions, Button, Stack, Typography, TextField, MenuItem, Box, Paper, Autocomplete, CircularProgress } from "@mui/material";
 import styled from "@emotion/styled";
-import { collection, addDoc, getDocs, serverTimestamp, query, where } from "firebase/firestore";
+import { collection, addDoc, getDocs, getDoc, doc, serverTimestamp, query, where } from "firebase/firestore";
 import { db } from "../firebase";
 //import emailjs from "@emailjs/browser";
 import emailjs from "../lib/emailjs";
@@ -32,7 +32,7 @@ type EquipmentLite = {
   id: string;
   assetNo: string; // 設備番号
   deviceName?: string; // 表示補助
-  owner?: string; // ★ 追加：所有者表示用
+  owner?: string; // 所有者表示用
   seqOrder?: number; // 並び順
   category?: string; // カテゴリ名（asset_categories.label と一致）
 };
@@ -42,7 +42,7 @@ const EMAILJS_TEMPLATE_ID = "template_81c28kt";
 
 const NewPostDialog: React.FC<Props> = ({ open, onClose, onSaved }) => {
   const [applicantdate, setApplicantdate] = useState("");
-  const [applicant, setApplicant] = useState("");
+  const [applicant, setApplicant] = useState(""); // 表示・保存・メール送信用の氏名
   const [classification, setClassification] = useState("");
   const [periodfrom, setPeriodfrom] = useState("");
   const [periodto, setPeriodto] = useState("");
@@ -82,10 +82,59 @@ const NewPostDialog: React.FC<Props> = ({ open, onClose, onSaved }) => {
   const [selectedOption, setSelectedOption] = useState("");
   const [otherInput, setOtherInput] = useState("");
 
-  // 申請者デフォルト
+  // 申請者名の解決：users コレクションから displayName を取得（フォールバックあり）
   useEffect(() => {
-    const name = (user as any)?.displayName?.trim?.() || (user as any)?.email || "";
-    setApplicant(name);
+    const fallbackName = (user as any)?.displayName?.trim?.() || (user as any)?.email || "";
+
+    const pickName = (data: any | undefined) => {
+      if (!data) return "";
+      const tryNames = [data.displayName, data.name, data.fullName];
+      const hit = tryNames.find((v) => typeof v === "string" && v.trim());
+      return (hit ?? "").toString().trim();
+    };
+
+    const loadApplicantName = async () => {
+      if (!user?.uid) {
+        setApplicant(fallbackName);
+        return;
+      }
+      let resolvedName = "";
+      try {
+        // 1) users/{uid}
+        try {
+          const snap = await getDoc(doc(db, "users", user.uid));
+          resolvedName = pickName(snap.exists() ? snap.data() : undefined);
+        } catch (e) {
+          console.warn("users/{uid} read failed:", e);
+        }
+
+        // 2) id == uid
+        if (!resolvedName) {
+          try {
+            const qs = await getDocs(query(collection(db, "users"), where("id", "==", user.uid)));
+            if (!qs.empty) resolvedName = pickName(qs.docs[0].data());
+          } catch (e) {
+            console.warn("users where id==uid read failed:", e);
+          }
+        }
+
+        // 3) email == currentUser.email
+        if (!resolvedName && user?.email) {
+          try {
+            const qs = await getDocs(query(collection(db, "users"), where("email", "==", user.email)));
+            if (!qs.empty) resolvedName = pickName(qs.docs[0].data());
+          } catch (e) {
+            console.warn("users where email==current email read failed:", e);
+          }
+        }
+      } catch (e) {
+        console.error("Failed to resolve applicant displayName:", e);
+      } finally {
+        setApplicant(resolvedName || fallbackName);
+      }
+    };
+
+    loadApplicantName();
   }, [user]);
 
   // 承認者名の追従
@@ -111,7 +160,7 @@ const NewPostDialog: React.FC<Props> = ({ open, onClose, onSaved }) => {
     const loadInitial = async () => {
       try {
         setLoadingCategories(true);
-        // インデックス不要版：where のみで取得 → displayOrder はクライアントソート
+        // isTarget==true → displayOrder でクライアントソート
         const qsCats = await getDocs(query(collection(db, "asset_categories"), where("isTarget", "==", true)));
         const cats: AssetCategory[] = qsCats.docs.map((d) => {
           const data = d.data() as any;
@@ -164,7 +213,6 @@ const NewPostDialog: React.FC<Props> = ({ open, onClose, onSaved }) => {
     const fetchAssetNos = async () => {
       setLoadingAssetNos(true);
       try {
-        // インデックス不要版：where のみで取得 → seqOrder はクライアントソート
         const snap = await getDocs(query(collection(db, "equipments"), where("category", "==", media)));
         const rows: EquipmentLite[] = snap.docs.map((d) => {
           const data = d.data() as any;
@@ -172,7 +220,7 @@ const NewPostDialog: React.FC<Props> = ({ open, onClose, onSaved }) => {
             id: d.id,
             assetNo: String(data?.assetNo ?? ""),
             deviceName: data?.deviceName ?? "",
-            owner: data?.owner ?? "", // ★ 追加：owner 取り込み
+            owner: data?.owner ?? "",
             seqOrder: data?.seqOrder,
             category: data?.category ?? "",
           };
@@ -196,7 +244,7 @@ const NewPostDialog: React.FC<Props> = ({ open, onClose, onSaved }) => {
     if (!open) setIsSubmitted(false);
   }, [open]);
 
-  // ★ フォーム一括リセット（applicant/toEmail は残す）
+  // フォーム一括リセット（applicant/toEmail は残す）
   const resetForm = () => {
     setApplicantdate("");
     setClassification("");
@@ -268,7 +316,8 @@ const NewPostDialog: React.FC<Props> = ({ open, onClose, onSaved }) => {
       // 1) posts へ登録（既存仕様：materials=設備名, media=設備番号）
       const postPayload = {
         applicantdate,
-        applicant,
+        applicant, // users 由来の displayName
+        applicantId: user?.uid ?? "", // 参考：紐付け用
         classification,
         periodfrom,
         periodto,
@@ -327,7 +376,7 @@ const NewPostDialog: React.FC<Props> = ({ open, onClose, onSaved }) => {
         materials: mediaDisplay,
         media: materials,
         link: emailHtml,
-        action: "登録",
+        action: "承認依頼（登録申請）",
       };
       const res = await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, templateParams);
       console.log("EmailJS send success:", res);
@@ -385,29 +434,9 @@ const NewPostDialog: React.FC<Props> = ({ open, onClose, onSaved }) => {
               <Stack direction="column" spacing={0.5}>
                 <TextField label="申請者" variant="standard" size="small" margin="dense" fullWidth InputLabelProps={{ shrink: true }} value={applicant} InputProps={{ readOnly: true }} />
 
-                <TextField
-                  label="申請日"
-                  type="date"
-                  variant="standard"
-                  size="small"
-                  margin="dense"
-                  fullWidth
-                  InputLabelProps={{ shrink: true }}
-                  value={applicantdate}
-                  onChange={(e) => setApplicantdate(e.target.value)}
-                />
+                <TextField label="申請日" type="date" variant="standard" size="small" margin="dense" fullWidth InputLabelProps={{ shrink: true }} value={applicantdate} onChange={(e) => setApplicantdate(e.target.value)} />
 
-                <TextField
-                  label="持出・持込区分"
-                  select
-                  variant="standard"
-                  size="small"
-                  margin="dense"
-                  fullWidth
-                  InputLabelProps={{ shrink: true }}
-                  value={classification}
-                  onChange={(e) => setClassification(e.target.value)}
-                >
+                <TextField label="持出・持込区分" select variant="standard" size="small" margin="dense" fullWidth InputLabelProps={{ shrink: true }} value={classification} onChange={(e) => setClassification(e.target.value)}>
                   <MenuItem value="持出">持出</MenuItem>
                   <MenuItem value="持込">持込</MenuItem>
                 </TextField>
@@ -450,17 +479,7 @@ const NewPostDialog: React.FC<Props> = ({ open, onClose, onSaved }) => {
                   inputProps={{ min: periodfrom || undefined }}
                 />
 
-                <TextField
-                  label="承認先（受信者）"
-                  select
-                  variant="standard"
-                  size="small"
-                  margin="dense"
-                  fullWidth
-                  InputLabelProps={{ shrink: true }}
-                  value={toEmail}
-                  onChange={(e) => setToEmail(e.target.value)}
-                >
+                <TextField label="承認先（受信者）" select variant="standard" size="small" margin="dense" fullWidth InputLabelProps={{ shrink: true }} value={toEmail} onChange={(e) => setToEmail(e.target.value)}>
                   {approvers.map((a, idx) => (
                     <MenuItem key={idx} value={a.email}>
                       {a.name}（{a.email}）
@@ -476,20 +495,9 @@ const NewPostDialog: React.FC<Props> = ({ open, onClose, onSaved }) => {
                   ))}
                 </TextField>
 
-                {selectedOption === "その他" && (
-                  <TextField
-                    label="持込・持出先（その他の内容）"
-                    variant="standard"
-                    size="small"
-                    margin="dense"
-                    fullWidth
-                    value={otherInput}
-                    onChange={handleOtherInputChange}
-                    placeholder="例）○○顧客先、○○工場 など"
-                  />
-                )}
+                {selectedOption === "その他" && <TextField label="持込・持出先（その他の内容）" variant="standard" size="small" margin="dense" fullWidth value={otherInput} onChange={handleOtherInputChange} placeholder="例）○○顧客先、○○工場 など" />}
 
-                {/* 設備（カテゴリ）: asset_categories.label（isTarget==true を displayOrder でクライアントソート） */}
+                {/* 設備（カテゴリ） */}
                 <Autocomplete
                   value={media || null}
                   onChange={(_, v) => {
@@ -535,12 +543,12 @@ const NewPostDialog: React.FC<Props> = ({ open, onClose, onSaved }) => {
                   />
                 )}
 
-                {/* 設備番号: equipments.assetNo（category==media で取得し、seqOrder でクライアントソート） */}
+                {/* 設備番号 */}
                 <Autocomplete
                   value={selectedAssetOption}
                   onChange={(_, v) => {
                     const selectedNo = (v as EquipmentLite | null)?.assetNo ?? "";
-                    setMaterials(selectedNo); // 設備番号（assetNo）
+                    setMaterials(selectedNo);
                   }}
                   options={assetNoOptions}
                   getOptionLabel={(o) => (o ? assetNoDisplay(o) : "")}

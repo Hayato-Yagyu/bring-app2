@@ -112,7 +112,7 @@ async function findTargets(): Promise<Post[]> {
 /** スケジュール実行（毎日 14:50 JST）で返却案内を送信。 */
 export const remindReturnIfDue = onSchedule(
   {
-    schedule: "30 15 * * *",
+    schedule: "0 9 * * *",
     timeZone: "Asia/Tokyo",
     retryCount: 3,
   },
@@ -171,7 +171,7 @@ export const remindReturnIfDue = onSchedule(
           media: row.media || "",
           link,
           purpose: "返却申請のご案内",
-          action: "返却申請",
+          action: "返却申請依頼（催促）",
           today,
         };
 

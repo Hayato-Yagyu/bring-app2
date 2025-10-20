@@ -313,6 +313,10 @@ const NewPostDialog: React.FC<Props> = ({ open, onClose, onSaved }) => {
       // 保存用に設備名（カテゴリ）を確定
       const mediaDisplay = media === "その他" ? mediaOther.trim() : media;
 
+      // 送信者（依頼者）情報
+      const requestedBy = user?.email ?? "";
+      const requestedByName = applicant; // ★氏名を保持
+
       // 1) posts へ登録（既存仕様：materials=設備名, media=設備番号）
       const postPayload = {
         applicantdate,
@@ -330,9 +334,10 @@ const NewPostDialog: React.FC<Props> = ({ open, onClose, onSaved }) => {
         confirmationdate,
         confirmationstamp,
         notifyTo: toEmail,
-        requestedBy: user?.email ?? "",
+        requestedBy, // メール
+        requestedByName, // ★追加
         requestedAt: new Date().toISOString(),
-      };
+      } as const;
       const docRef = await addDoc(collection(db, "posts"), postPayload);
 
       // 2) approvals へ未処理タスク
@@ -342,7 +347,8 @@ const NewPostDialog: React.FC<Props> = ({ open, onClose, onSaved }) => {
         postId: docRef.id,
         assigneeEmail: toEmail,
         assigneeName: toName,
-        requestedBy: user?.email ?? "",
+        requestedBy, // メール
+        requestedByName, // ★追加
         requestedAt: serverTimestamp(),
         snapshot: {
           id: docRef.id,
@@ -354,9 +360,10 @@ const NewPostDialog: React.FC<Props> = ({ open, onClose, onSaved }) => {
           where: whereValue,
           materials: mediaDisplay,
           media: materials,
+          requestedByName, // （必要なら）スナップショットにも保持
         },
         link: "https://kdsbring.netlify.app/",
-      };
+      } as const;
       await addDoc(collection(db, "approvals"), approvalPayload);
 
       // 3) 承認メール（EmailJS）
@@ -364,8 +371,9 @@ const NewPostDialog: React.FC<Props> = ({ open, onClose, onSaved }) => {
       const templateParams = {
         to_name: toName,
         to_email: toEmail,
-        from_email: user?.email ?? "",
-        reply_to: user?.email ?? "",
+        from_email: requestedBy,
+        from_name: requestedByName, // ★テンプレで送り主名を使う場合
+        reply_to: requestedBy,
         id: docRef.id,
         applicantdate,
         applicant,
@@ -376,8 +384,8 @@ const NewPostDialog: React.FC<Props> = ({ open, onClose, onSaved }) => {
         materials: mediaDisplay,
         media: materials,
         link: emailHtml,
-        action: "登録",
-      };
+        action: "承認依頼（登録申請）",
+      } as const;
       const res = await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, templateParams);
       console.log("EmailJS send success:", res);
 

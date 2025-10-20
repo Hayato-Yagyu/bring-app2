@@ -90,7 +90,7 @@ const ReturnDialog: React.FC<Props> = ({ open, onClose, onCloseAll, rowId, rowDa
       materials: rowData?.materials ?? "",
       media: rowData?.media ?? "",
       link: emailHtml,
-      action: "返却",
+      action: "承認依頼（返却申請）",
     };
 
     try {
