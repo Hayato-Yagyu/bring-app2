@@ -10,7 +10,7 @@ const db = admin.firestore();
 const {FieldValue} = admin.firestore;
 const {serverTimestamp, increment} = FieldValue;
 
-// functions:config:set で設定したキー名
+// params（.env）キー
 const EMAILJS_SERVICE_ID = defineString("EMAILJS_SERVICE_ID");
 const EMAILJS_TEMPLATE_ID = defineString("EMAILJS_TEMPLATE_ID");
 const EMAILJS_PRIVATE_KEY = defineString("EMAILJS_PRIVATE_KEY");
@@ -69,7 +69,7 @@ async function sendEmailWithEmailJS(params: Record<string, unknown>): Promise<vo
   const body = {
     service_id: EMAILJS_SERVICE_ID.value(),
     template_id: EMAILJS_TEMPLATE_ID.value(),
-    // サーバー側は accessToken を推奨
+    // REST は accessToken = Private key
     accessToken: EMAILJS_PRIVATE_KEY.value(),
     template_params: params,
   };
@@ -82,7 +82,7 @@ async function sendEmailWithEmailJS(params: Record<string, unknown>): Promise<vo
 
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`EmailJS error: ${res.status} ${text}`);
+    throw new Error(`EmailJS ${res.status}: ${text}`);
   }
 }
 
@@ -110,52 +110,83 @@ async function findTargets(): Promise<Post[]> {
 }
 
 /**
- * スケジュール実行（毎日 09:00 JST）で返却案内を送信。
+ * スケジュール実行（毎日 13:45 JST）で返却案内を送信。
  */
 export const remindReturnIfDue = onSchedule(
   {
-    schedule: "45 13 * * *",
+    schedule: "10 14 * * *",
     timeZone: "Asia/Tokyo",
     retryCount: 3,
   },
   async () => {
-    const today = todayJst();
-    const targets = await findTargets();
-    if (!targets.length) return;
-
-    const batch = db.batch();
-
-    for (const row of targets) {
-      const email = row.requestedBy as string;
-      const link = APPROVAL_BASE_URL.value();
-
-      const templateParams = {
-        to_email: email,
-        to_name: row.applicant || "",
-        id: row.id,
-        applicantdate: row.applicantdate || "",
-        applicant: row.applicant || "",
-        classification: row.classification || "",
-        periodfrom: row.periodfrom || "",
-        periodto: row.periodto || "",
-        where: row.where || "",
-        materials: row.materials || "",
-        media: row.media || "",
-        link,
-        purpose: "返却申請のご案内",
-        action: "返却申請",
-        today,
-      };
-
-      await sendEmailWithEmailJS(templateParams);
-
-      const ref = db.collection("posts").doc(row.id);
-      batch.update(ref, {
-        returnReminderSentAt: serverTimestamp(),
-        returnReminderCount: increment(1),
+    try {
+      // パラメータの存在だけログ（値は出さない）
+      console.log("[remind] params:", {
+        SERVICE: !!EMAILJS_SERVICE_ID.value(),
+        TEMPLATE: !!EMAILJS_TEMPLATE_ID.value(),
+        KEY: !!EMAILJS_PRIVATE_KEY.value(),
+        BASE_URL: !!APPROVAL_BASE_URL.value(),
       });
-    }
 
-    await batch.commit();
+      const today = todayJst();
+      const targets = await findTargets();
+
+      console.log("[remind] start", {date: today, count: targets.length});
+
+      if (!targets.length) {
+        console.log("[remind] no targets; exit normally");
+        return;
+      }
+
+      const batch = db.batch();
+      let ok = 0;
+      let ng = 0;
+
+      for (const row of targets) {
+        const email = row.requestedBy as string;
+        const link = APPROVAL_BASE_URL.value();
+
+        const templateParams = {
+          to_email: email,
+          to_name: row.applicant || "",
+          id: row.id,
+          applicantdate: row.applicantdate || "",
+          applicant: row.applicant || "",
+          classification: row.classification || "",
+          periodfrom: row.periodfrom || "",
+          periodto: row.periodto || "",
+          where: row.where || "",
+          materials: row.materials || "",
+          media: row.media || "",
+          link,
+          purpose: "返却申請のご案内",
+          action: "返却申請",
+          today,
+        };
+
+        try {
+          console.log("[remind] send ->", email, "post:", row.id);
+          await sendEmailWithEmailJS(templateParams);
+
+          const ref = db.collection("posts").doc(row.id);
+          batch.update(ref, {
+            returnReminderSentAt: serverTimestamp(),
+            returnReminderCount: increment(1),
+          });
+          ok++;
+        } catch (e) {
+          ng++;
+          console.warn("[remind] send failed:", row.id, String((e as Error)?.message ?? e));
+          // 続行（他の対象へ）
+        }
+      }
+
+      await batch.commit();
+      console.log("[remind] finished.", {ok, ng});
+      // 例外を投げない → Scheduler から成功扱い
+    } catch (e) {
+      // 想定外の例外もログだけ出して終了（次回へ）
+      console.error("[remind] fatal:", String(e));
+    }
   }
 );
