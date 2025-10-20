@@ -1,9 +1,8 @@
 // src/components/EditButton.tsx
 import React, { useState } from "react";
-import { Button, IconButton, Tooltip, Modal, TextField, Box, MenuItem, InputLabel, FormControl, Select, Autocomplete, CircularProgress, Typography, Divider } from "@mui/material";
+import { Button, IconButton, Tooltip, Modal, TextField, Box, MenuItem, InputLabel, FormControl, Select, Autocomplete, CircularProgress } from "@mui/material";
 import type { SelectChangeEvent } from "@mui/material/Select";
 import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
-import CloseIcon from "@mui/icons-material/Close";
 import Where from "./Where";
 import ApprovalRequestDialog from "./ApprovalRequestDialog";
 
@@ -412,35 +411,21 @@ export const EditButton: React.FC<Props> = ({ rowData, setSharedState, disabled,
       <Modal open={open} onClose={handleClose} BackdropProps={{ onClick: (e) => e.stopPropagation() }}>
         <Box
           sx={{
-            p: 2,
-            bgcolor: "background.paper",
-            borderRadius: 2,
-            boxShadow: 6,
+            padding: 2,
+            backgroundColor: "white",
             margin: "auto",
             mt: "4%",
-            width: 900, // 横長に
-            maxWidth: "96vw",
-            maxHeight: "86vh",
+            width: 420,
+            maxHeight: "80vh",
             overflow: "auto",
           }}
         >
-          {/* ヘッダ（タイトル＋閉じる） */}
-          <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 1 }}>
-            <Typography variant="h6" component="h2" sx={{ fontWeight: 600 }}>
-              変更申請・返却申請
-            </Typography>
-            <IconButton aria-label="close" onClick={handleClose} size="small">
-              <CloseIcon fontSize="small" />
-            </IconButton>
-          </Box>
-          <Divider sx={{ mb: 2 }} />
-
           {/* 2カラムでコンパクト */}
           <Box
             sx={{
               display: "grid",
               gridTemplateColumns: "1fr 1fr",
-              gap: 1.5,
+              gap: 1,
               "& .MuiTextField-root, & .MuiFormControl-root": { mb: 0 },
             }}
           >
@@ -482,7 +467,6 @@ export const EditButton: React.FC<Props> = ({ rowData, setSharedState, disabled,
 
             {/* 設備（カテゴリ） */}
             <Autocomplete
-              sx={{ gridColumn: "1 / -1" }} // 全幅表示で見やすく
               value={formData.media || ""}
               onChange={(_, v) => {
                 const name = (v as string) || "";
@@ -516,7 +500,6 @@ export const EditButton: React.FC<Props> = ({ rowData, setSharedState, disabled,
 
             {/* 設備番号 */}
             <Autocomplete
-              sx={{ gridColumn: "1 / -1" }} // 全幅表示で見やすく
               value={assetNoOptions.find((x) => x.assetNo === (formData.materials || "")) || null}
               onChange={(_, v) => {
                 const selectedNo = (v as EquipmentLite | null)?.assetNo ?? "";
@@ -560,8 +543,7 @@ export const EditButton: React.FC<Props> = ({ rowData, setSharedState, disabled,
           </Box>
 
           {/* ボタン行 */}
-          <Divider sx={{ mt: 2, mb: 1 }} />
-          <Box sx={{ display: "flex", justifyContent: "flex-end", mt: 1, gap: 1 }}>
+          <Box sx={{ display: "flex", justifyContent: "flex-end", mt: 2, gap: 1 }}>
             <Button variant="outlined" color="primary" onClick={handleClose} sx={{ width: 140 }}>
               キャンセル
             </Button>
