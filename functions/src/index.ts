@@ -75,9 +75,9 @@ async function sendEmailWithEmailJS(params: Record<string, unknown>): Promise<vo
   const body = {
     service_id: EMAILJS_SERVICE_ID.value(),
     template_id: EMAILJS_TEMPLATE_ID.value(),
-    // Public Key（＝旧 user_id）が必須
-    public_key: EMAILJS_PUBLIC_KEY.value(),
-    // サーバー間は Private Key を accessToken に
+    // ← ここを 'user_id' に。値は Public Key
+    user_id: EMAILJS_PUBLIC_KEY.value(),
+    // Private Key は accessToken で併用（サーバー間送信）
     accessToken: EMAILJS_PRIVATE_KEY.value(),
     template_params: params,
   };
