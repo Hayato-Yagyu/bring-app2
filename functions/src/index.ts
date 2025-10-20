@@ -14,6 +14,7 @@ const {serverTimestamp, increment} = FieldValue;
 const EMAILJS_SERVICE_ID = defineString("EMAILJS_SERVICE_ID");
 const EMAILJS_TEMPLATE_ID = defineString("EMAILJS_TEMPLATE_ID");
 const EMAILJS_PRIVATE_KEY = defineString("EMAILJS_PRIVATE_KEY");
+const EMAILJS_PUBLIC_KEY = defineString("EMAILJS_PUBLIC_KEY");
 const APPROVAL_BASE_URL = defineString("APPROVAL_BASE_URL");
 
 /** posts ドキュメントの最小型 */
@@ -40,7 +41,12 @@ type Post = {
 const todayJst = (): string => {
   const tz = "Asia/Tokyo";
   const now = new Date();
-  const parts = new Intl.DateTimeFormat("ja-JP", {timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit"}).formatToParts(now);
+  const parts = new Intl.DateTimeFormat("ja-JP", {
+    timeZone: tz,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(now);
 
   const y = parts.find((p) => p.type === "year")?.value ?? "1970";
   const m = parts.find((p) => p.type === "month")?.value ?? "01";
@@ -69,7 +75,9 @@ async function sendEmailWithEmailJS(params: Record<string, unknown>): Promise<vo
   const body = {
     service_id: EMAILJS_SERVICE_ID.value(),
     template_id: EMAILJS_TEMPLATE_ID.value(),
-    // REST は accessToken = Private key
+    // Public Key（＝旧 user_id）が必須
+    public_key: EMAILJS_PUBLIC_KEY.value(),
+    // サーバー間は Private Key を accessToken に
     accessToken: EMAILJS_PRIVATE_KEY.value(),
     template_params: params,
   };
@@ -110,11 +118,11 @@ async function findTargets(): Promise<Post[]> {
 }
 
 /**
- * スケジュール実行（毎日 13:45 JST）で返却案内を送信。
+ * スケジュール実行（毎日 14:10 JST）で返却案内を送信。
  */
 export const remindReturnIfDue = onSchedule(
   {
-    schedule: "10 14 * * *",
+    schedule: "50 14 * * *",
     timeZone: "Asia/Tokyo",
     retryCount: 3,
   },
@@ -124,6 +132,7 @@ export const remindReturnIfDue = onSchedule(
       console.log("[remind] params:", {
         SERVICE: !!EMAILJS_SERVICE_ID.value(),
         TEMPLATE: !!EMAILJS_TEMPLATE_ID.value(),
+        PUBLIC: !!EMAILJS_PUBLIC_KEY.value(),
         KEY: !!EMAILJS_PRIVATE_KEY.value(),
         BASE_URL: !!APPROVAL_BASE_URL.value(),
       });
